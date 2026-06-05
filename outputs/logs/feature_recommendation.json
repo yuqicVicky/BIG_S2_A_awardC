@@ -1,0 +1,25 @@
+{
+  "per_column": [
+    {
+      "column": "timestamp",
+      "action": "EXTRACT_DATETIME_FEATURES",
+      "reason": "Extract hour, dayofweek, month, year, etc."
+    },
+    {
+      "column": "hour",
+      "action": "EXTRACT_DATETIME_FEATURES",
+      "reason": "Extract hour, dayofweek, month, year, etc."
+    },
+    {
+      "column": "dayofweek",
+      "action": "EXTRACT_DATETIME_FEATURES",
+      "reason": "Extract hour, dayofweek, month, year, etc."
+    },
+    {
+      "column": "month",
+      "action": "DROP",
+      "reason": "Near-constant \u2014 no signal"
+    }
+  ],
+  "high_signal_numeric": []
+}

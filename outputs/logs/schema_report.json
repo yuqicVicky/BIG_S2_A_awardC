@@ -1,0 +1,273 @@
+{
+  "train": {
+    "split": "train",
+    "row_count": 1350,
+    "col_count": 9,
+    "columns": {
+      "timestamp": {
+        "dtype": "datetime64[ns]",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 27,
+        "row_count": 1350,
+        "sample_values": [
+          "2023-01-01 00:00:00",
+          "2023-01-01 01:00:00",
+          "2023-01-01 02:00:00",
+          "2023-01-01 03:00:00",
+          "2023-01-01 04:00:00"
+        ]
+      },
+      "entity_id": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 50,
+        "row_count": 1350,
+        "sample_values": [
+          "E000",
+          "E000",
+          "E000",
+          "E000",
+          "E000"
+        ]
+      },
+      "hour": {
+        "dtype": "int64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 24,
+        "row_count": 1350,
+        "sample_values": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4"
+        ]
+      },
+      "dayofweek": {
+        "dtype": "int64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 2,
+        "row_count": 1350,
+        "sample_values": [
+          "6",
+          "6",
+          "6",
+          "6",
+          "6"
+        ]
+      },
+      "month": {
+        "dtype": "int64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 1,
+        "row_count": 1350,
+        "sample_values": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ]
+      },
+      "numeric_feature": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 1133,
+        "row_count": 1350,
+        "sample_values": [
+          "39.6",
+          "30.49",
+          "46.84",
+          "58.79",
+          "61.27"
+        ]
+      },
+      "category": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 3,
+        "row_count": 1350,
+        "sample_values": [
+          "B",
+          "B",
+          "B",
+          "A",
+          "B"
+        ]
+      },
+      "text_note": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 3,
+        "row_count": 1350,
+        "sample_values": [
+          "low activity",
+          "low activity",
+          "normal operation",
+          "low activity",
+          "elevated demand"
+        ]
+      },
+      "target": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 1222,
+        "row_count": 1350,
+        "sample_values": [
+          "122.68",
+          "117.17",
+          "118.38",
+          "127.6",
+          "124.51"
+        ]
+      }
+    }
+  },
+  "predict": {
+    "split": "predict",
+    "row_count": 150,
+    "col_count": 8,
+    "columns": {
+      "timestamp": {
+        "dtype": "datetime64[ns]",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 3,
+        "row_count": 150,
+        "sample_values": [
+          "2023-01-02 03:00:00",
+          "2023-01-02 04:00:00",
+          "2023-01-02 05:00:00",
+          "2023-01-02 03:00:00",
+          "2023-01-02 04:00:00"
+        ]
+      },
+      "entity_id": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 50,
+        "row_count": 150,
+        "sample_values": [
+          "E000",
+          "E000",
+          "E000",
+          "E001",
+          "E001"
+        ]
+      },
+      "hour": {
+        "dtype": "int64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 3,
+        "row_count": 150,
+        "sample_values": [
+          "3",
+          "4",
+          "5",
+          "3",
+          "4"
+        ]
+      },
+      "dayofweek": {
+        "dtype": "int64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 1,
+        "row_count": 150,
+        "sample_values": [
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      },
+      "month": {
+        "dtype": "int64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 1,
+        "row_count": 150,
+        "sample_values": [
+          "1",
+          "1",
+          "1",
+          "1",
+          "1"
+        ]
+      },
+      "numeric_feature": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 146,
+        "row_count": 150,
+        "sample_values": [
+          "54.57",
+          "46.18",
+          "45.31",
+          "43.45",
+          "37.74"
+        ]
+      },
+      "category": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 3,
+        "row_count": 150,
+        "sample_values": [
+          "A",
+          "C",
+          "C",
+          "A",
+          "C"
+        ]
+      },
+      "text_note": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 3,
+        "row_count": 150,
+        "sample_values": [
+          "normal operation",
+          "low activity",
+          "elevated demand",
+          "normal operation",
+          "low activity"
+        ]
+      }
+    }
+  },
+  "comparison": {
+    "train_only_columns": [
+      "target"
+    ],
+    "predict_only_columns": [],
+    "common_columns": [
+      "category",
+      "dayofweek",
+      "entity_id",
+      "hour",
+      "month",
+      "numeric_feature",
+      "text_note",
+      "timestamp"
+    ],
+    "dtype_mismatches": {},
+    "row_count_train": 1350,
+    "row_count_predict": 150
+  }
+}

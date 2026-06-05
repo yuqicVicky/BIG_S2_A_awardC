@@ -1,0 +1,84 @@
+{
+  "columns": {
+    "timestamp": {
+      "inferred_type": "datetime_like",
+      "null_rate": 0.0,
+      "n_unique": 27,
+      "reasons": [
+        "explicitly provided as datetime_col"
+      ]
+    },
+    "entity_id": {
+      "inferred_type": "group_entity_id",
+      "null_rate": 0.0,
+      "n_unique": 50,
+      "reasons": [
+        "explicitly provided as group_col"
+      ]
+    },
+    "hour": {
+      "inferred_type": "datetime_like",
+      "null_rate": 0.0,
+      "n_unique": 24,
+      "reasons": [
+        "column name contains datetime keyword"
+      ]
+    },
+    "dayofweek": {
+      "inferred_type": "datetime_like",
+      "null_rate": 0.0,
+      "n_unique": 2,
+      "reasons": [
+        "column name contains datetime keyword"
+      ]
+    },
+    "month": {
+      "inferred_type": "constant",
+      "null_rate": 0.0,
+      "n_unique": 1,
+      "reasons": [
+        "single unique value"
+      ]
+    },
+    "numeric_feature": {
+      "inferred_type": "numeric_continuous",
+      "null_rate": 0.0,
+      "n_unique": 1133,
+      "reasons": [
+        "numeric float with high cardinality"
+      ]
+    },
+    "category": {
+      "inferred_type": "categorical_low_cardinality",
+      "null_rate": 0.0,
+      "n_unique": 3,
+      "reasons": [
+        "string with 3 unique values (<= 20)"
+      ]
+    },
+    "text_note": {
+      "inferred_type": "categorical_low_cardinality",
+      "null_rate": 0.0,
+      "n_unique": 3,
+      "reasons": [
+        "string with 3 unique values (<= 20)"
+      ]
+    },
+    "target": {
+      "inferred_type": "target",
+      "null_rate": 0.0,
+      "n_unique": 1222,
+      "reasons": [
+        "explicitly provided as target"
+      ]
+    }
+  },
+  "type_summary": {
+    "datetime_like": 3,
+    "group_entity_id": 1,
+    "constant": 1,
+    "numeric_continuous": 1,
+    "categorical_low_cardinality": 2,
+    "target": 1
+  }
+}

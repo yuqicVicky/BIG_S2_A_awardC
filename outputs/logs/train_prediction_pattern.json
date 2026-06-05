@@ -1,0 +1,82 @@
+{
+  "row_counts": {
+    "train": 1350,
+    "predict": 150
+  },
+  "numeric_shift": [
+    {
+      "column": "numeric_feature",
+      "ks_statistic": 0.077,
+      "ks_pvalue": 0.3842,
+      "shift_detected": false,
+      "train_mean": 49.931,
+      "predict_mean": 50.3668
+    }
+  ],
+  "categorical_overlap": [
+    {
+      "column": "entity_id",
+      "n_train_categories": 50,
+      "n_predict_categories": 50,
+      "n_overlap": 50,
+      "overlap_ratio": 1.0,
+      "train_only_categories": [],
+      "predict_only_categories": []
+    },
+    {
+      "column": "category",
+      "n_train_categories": 3,
+      "n_predict_categories": 3,
+      "n_overlap": 3,
+      "overlap_ratio": 1.0,
+      "train_only_categories": [],
+      "predict_only_categories": []
+    },
+    {
+      "column": "text_note",
+      "n_train_categories": 3,
+      "n_predict_categories": 3,
+      "n_overlap": 3,
+      "overlap_ratio": 1.0,
+      "train_only_categories": [],
+      "predict_only_categories": []
+    }
+  ],
+  "datetime_coverage": [
+    {
+      "column": "timestamp",
+      "train_min": "2023-01-01 00:00:00",
+      "train_max": "2023-01-02 02:00:00",
+      "predict_min": "2023-01-02 03:00:00",
+      "predict_max": "2023-01-02 05:00:00",
+      "predict_after_train": true,
+      "time_gap_days": 0.04
+    },
+    {
+      "column": "hour",
+      "train_min": "1970-01-01 00:00:00",
+      "train_max": "1970-01-01 00:00:00.000000023",
+      "predict_min": "1970-01-01 00:00:00.000000003",
+      "predict_max": "1970-01-01 00:00:00.000000005",
+      "predict_after_train": false,
+      "time_gap_days": -0.0
+    },
+    {
+      "column": "dayofweek",
+      "train_min": "1970-01-01 00:00:00",
+      "train_max": "1970-01-01 00:00:00.000000006",
+      "predict_min": "1970-01-01 00:00:00",
+      "predict_max": "1970-01-01 00:00:00",
+      "predict_after_train": false,
+      "time_gap_days": -0.0
+    }
+  ],
+  "split_pattern": {
+    "pattern": "within_period_group",
+    "evidence": [
+      "timestamp: predict starts after train ends \u2192 time-based split",
+      "hour: predict overlaps or precedes train max \u2192 within-period pattern",
+      "dayofweek: predict overlaps or precedes train max \u2192 within-period pattern"
+    ]
+  }
+}
