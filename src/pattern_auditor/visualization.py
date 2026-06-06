@@ -76,12 +76,19 @@ class Visualizer:
                 _save(self._fig_target_by_time(dt_cols[0]), p)
                 generated.append(p)
 
-                # Hour × dayofweek heatmap
                 df_ext = self._extended_df(dt_cols[0])
+
+                # Hour × dayofweek heatmap
                 if df_ext is not None and "__hour" in df_ext.columns and "__dayofweek" in df_ext.columns:
                     p2 = os.path.join(figures_dir, "hour_by_dayofweek_heatmap.png")
                     _save(self._fig_hour_dow_heatmap(df_ext), p2)
                     generated.append(p2)
+
+                # Hour × workingday heatmap
+                if df_ext is not None and "__hour" in df_ext.columns and "__is_workingday" in df_ext.columns:
+                    p3 = os.path.join(figures_dir, "hour_by_workingday_heatmap.png")
+                    _save(self._fig_hour_workingday_heatmap(df_ext), p3)
+                    generated.append(p3)
 
         return generated
 
@@ -302,6 +309,35 @@ class Visualizer:
         ax.set_yticks(range(pivot.shape[0]))
         ax.set_yticklabels(list(pivot.index), fontsize=8)
         ax.set_xlabel("Day of Week")
+        ax.set_ylabel("Hour")
+        fig.colorbar(im, ax=ax, label="Mean Target")
+        fig.tight_layout()
+        return fig
+
+
+    def _fig_hour_workingday_heatmap(self, df_ext: pd.DataFrame) -> plt.Figure:
+        fig, ax = plt.subplots(figsize=(_FIG_W, _FIG_H))
+        fig.suptitle("Mean Target: Hour × Working Day", fontsize=13)
+
+        if self.target_col not in df_ext.columns:
+            ax.text(0.5, 0.5, "No target column", ha="center", va="center")
+            return fig
+
+        pivot = (
+            df_ext.groupby(["__hour", "__is_workingday"])[self.target_col]
+            .mean()
+            .unstack(fill_value=np.nan)
+        )
+
+        im = ax.imshow(pivot.values, aspect="auto", cmap="coolwarm", origin="lower")
+        ax.set_xticks(range(pivot.shape[1]))
+        ax.set_xticklabels(
+            ["Weekend" if c == 0 else "Workday" for c in pivot.columns],
+            fontsize=10,
+        )
+        ax.set_yticks(range(pivot.shape[0]))
+        ax.set_yticklabels(list(pivot.index), fontsize=8)
+        ax.set_xlabel("Day Type")
         ax.set_ylabel("Hour")
         fig.colorbar(im, ax=ax, label="Mean Target")
         fig.tight_layout()

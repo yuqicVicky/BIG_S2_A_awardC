@@ -74,8 +74,17 @@ def test_recommendation_has_all_required_fields():
     predict = pd.DataFrame({"a": rng.normal(size=20)})
     rec = _run(train, predict, target_col="target")
     r = rec["recommendation"]
-    for key in ("strategy", "confidence", "reason", "fit_rule", "validation_rule", "avoid"):
+    for key in ("strategy", "confidence", "reason", "fit_rule", "validation_rule", "strategies_to_avoid"):
         assert key in r, f"Missing key: {key}"
+
+
+def test_why_risky_field_present():
+    rng = np.random.default_rng(10)
+    train = pd.DataFrame({"a": rng.normal(size=100), "target": rng.normal(size=100)})
+    predict = pd.DataFrame({"a": rng.normal(size=20)})
+    rec = _run(train, predict, target_col="target")
+    assert "why_generic_validation_is_risky" in rec
+    assert len(rec["why_generic_validation_is_risky"]) > 10
 
 
 def test_time_based_has_rolling_alternative():

@@ -393,6 +393,280 @@
             "target_mean": 111.7272
           }
         ],
+        "hour_x_workingday": [
+          {
+            "hour": 0,
+            "is_workingday": 0,
+            "target_mean": 114.1614
+          },
+          {
+            "hour": 0,
+            "is_workingday": 1,
+            "target_mean": 113.9892
+          },
+          {
+            "hour": 1,
+            "is_workingday": 0,
+            "target_mean": 114.098
+          },
+          {
+            "hour": 1,
+            "is_workingday": 1,
+            "target_mean": 115.1758
+          },
+          {
+            "hour": 2,
+            "is_workingday": 0,
+            "target_mean": 117.1856
+          },
+          {
+            "hour": 2,
+            "is_workingday": 1,
+            "target_mean": 116.1658
+          },
+          {
+            "hour": 3,
+            "is_workingday": 0,
+            "target_mean": 116.92200000000001
+          },
+          {
+            "hour": 4,
+            "is_workingday": 0,
+            "target_mean": 118.90299999999999
+          },
+          {
+            "hour": 5,
+            "is_workingday": 0,
+            "target_mean": 117.9818
+          },
+          {
+            "hour": 6,
+            "is_workingday": 0,
+            "target_mean": 118.0626
+          },
+          {
+            "hour": 7,
+            "is_workingday": 0,
+            "target_mean": 118.1936
+          },
+          {
+            "hour": 8,
+            "is_workingday": 0,
+            "target_mean": 118.7634
+          },
+          {
+            "hour": 9,
+            "is_workingday": 0,
+            "target_mean": 116.4944
+          },
+          {
+            "hour": 10,
+            "is_workingday": 0,
+            "target_mean": 116.63459999999999
+          },
+          {
+            "hour": 11,
+            "is_workingday": 0,
+            "target_mean": 116.012
+          },
+          {
+            "hour": 12,
+            "is_workingday": 0,
+            "target_mean": 113.62299999999999
+          },
+          {
+            "hour": 13,
+            "is_workingday": 0,
+            "target_mean": 112.42739999999999
+          },
+          {
+            "hour": 14,
+            "is_workingday": 0,
+            "target_mean": 110.19879999999999
+          },
+          {
+            "hour": 15,
+            "is_workingday": 0,
+            "target_mean": 111.4578
+          },
+          {
+            "hour": 16,
+            "is_workingday": 0,
+            "target_mean": 110.1806
+          },
+          {
+            "hour": 17,
+            "is_workingday": 0,
+            "target_mean": 110.17139999999999
+          },
+          {
+            "hour": 18,
+            "is_workingday": 0,
+            "target_mean": 107.4586
+          },
+          {
+            "hour": 19,
+            "is_workingday": 0,
+            "target_mean": 108.9328
+          },
+          {
+            "hour": 20,
+            "is_workingday": 0,
+            "target_mean": 108.6948
+          },
+          {
+            "hour": 21,
+            "is_workingday": 0,
+            "target_mean": 111.64959999999999
+          },
+          {
+            "hour": 22,
+            "is_workingday": 0,
+            "target_mean": 110.4516
+          },
+          {
+            "hour": 23,
+            "is_workingday": 0,
+            "target_mean": 111.7272
+          }
+        ],
+        "hour_x_weekend": [
+          {
+            "hour": 0,
+            "is_weekend": 0,
+            "target_mean": 113.9892
+          },
+          {
+            "hour": 0,
+            "is_weekend": 1,
+            "target_mean": 114.1614
+          },
+          {
+            "hour": 1,
+            "is_weekend": 0,
+            "target_mean": 115.1758
+          },
+          {
+            "hour": 1,
+            "is_weekend": 1,
+            "target_mean": 114.098
+          },
+          {
+            "hour": 2,
+            "is_weekend": 0,
+            "target_mean": 116.1658
+          },
+          {
+            "hour": 2,
+            "is_weekend": 1,
+            "target_mean": 117.1856
+          },
+          {
+            "hour": 3,
+            "is_weekend": 1,
+            "target_mean": 116.92200000000001
+          },
+          {
+            "hour": 4,
+            "is_weekend": 1,
+            "target_mean": 118.90299999999999
+          },
+          {
+            "hour": 5,
+            "is_weekend": 1,
+            "target_mean": 117.9818
+          },
+          {
+            "hour": 6,
+            "is_weekend": 1,
+            "target_mean": 118.0626
+          },
+          {
+            "hour": 7,
+            "is_weekend": 1,
+            "target_mean": 118.1936
+          },
+          {
+            "hour": 8,
+            "is_weekend": 1,
+            "target_mean": 118.7634
+          },
+          {
+            "hour": 9,
+            "is_weekend": 1,
+            "target_mean": 116.4944
+          },
+          {
+            "hour": 10,
+            "is_weekend": 1,
+            "target_mean": 116.63459999999999
+          },
+          {
+            "hour": 11,
+            "is_weekend": 1,
+            "target_mean": 116.012
+          },
+          {
+            "hour": 12,
+            "is_weekend": 1,
+            "target_mean": 113.62299999999999
+          },
+          {
+            "hour": 13,
+            "is_weekend": 1,
+            "target_mean": 112.42739999999999
+          },
+          {
+            "hour": 14,
+            "is_weekend": 1,
+            "target_mean": 110.19879999999999
+          },
+          {
+            "hour": 15,
+            "is_weekend": 1,
+            "target_mean": 111.4578
+          },
+          {
+            "hour": 16,
+            "is_weekend": 1,
+            "target_mean": 110.1806
+          },
+          {
+            "hour": 17,
+            "is_weekend": 1,
+            "target_mean": 110.17139999999999
+          },
+          {
+            "hour": 18,
+            "is_weekend": 1,
+            "target_mean": 107.4586
+          },
+          {
+            "hour": 19,
+            "is_weekend": 1,
+            "target_mean": 108.9328
+          },
+          {
+            "hour": 20,
+            "is_weekend": 1,
+            "target_mean": 108.6948
+          },
+          {
+            "hour": 21,
+            "is_weekend": 1,
+            "target_mean": 111.64959999999999
+          },
+          {
+            "hour": 22,
+            "is_weekend": 1,
+            "target_mean": 110.4516
+          },
+          {
+            "hour": 23,
+            "is_weekend": 1,
+            "target_mean": 111.7272
+          }
+        ],
         "month_x_year": [
           {
             "year": 2023,
@@ -454,6 +728,20 @@
             "target_mean": 113.91543703703704
           }
         ],
+        "hour_x_workingday": [
+          {
+            "hour": 0,
+            "is_workingday": 1,
+            "target_mean": 113.91543703703704
+          }
+        ],
+        "hour_x_weekend": [
+          {
+            "hour": 0,
+            "is_weekend": 0,
+            "target_mean": 113.91543703703704
+          }
+        ],
         "month_x_year": [
           {
             "year": 1970,
@@ -512,6 +800,20 @@
           {
             "hour": 0,
             "dayofweek": 3,
+            "target_mean": 113.91543703703704
+          }
+        ],
+        "hour_x_workingday": [
+          {
+            "hour": 0,
+            "is_workingday": 1,
+            "target_mean": 113.91543703703704
+          }
+        ],
+        "hour_x_weekend": [
+          {
+            "hour": 0,
+            "is_weekend": 0,
             "target_mean": 113.91543703703704
           }
         ],

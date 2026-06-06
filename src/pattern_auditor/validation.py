@@ -24,7 +24,7 @@ _STRATEGIES = {
         ),
         "fit_rule": "Train on all but the latest N observations within each period.",
         "validation_rule": "Validate on the latest observations that mirror the prediction scenario.",
-        "avoid": ["time_holdout", "random_holdout"],
+        "strategies_to_avoid": ["time_holdout", "random_holdout"],
     },
     "within_period_group": {
         "strategy": "within_period_latest_available_holdout",
@@ -35,7 +35,7 @@ _STRATEGIES = {
         ),
         "fit_rule": "Train on all but the latest N observations per group per period.",
         "validation_rule": "Validate on the latest per-group observations.",
-        "avoid": ["time_holdout", "kfold"],
+        "strategies_to_avoid": ["time_holdout", "kfold"],
     },
     "time_based_split": {
         "strategy": "time_holdout",
@@ -43,7 +43,7 @@ _STRATEGIES = {
         "reason": "Prediction data comes strictly after training data — temporal ordering must be respected.",
         "fit_rule": "Train on all data up to a cutoff date.",
         "validation_rule": "Validate on data after the cutoff (simulating the prediction window).",
-        "avoid": ["kfold", "random_holdout", "stratified_kfold"],
+        "strategies_to_avoid": ["kfold", "random_holdout", "stratified_kfold"],
     },
     "group_based_split": {
         "strategy": "group_split",
@@ -51,7 +51,7 @@ _STRATEGIES = {
         "reason": "Prediction groups are largely unseen at training time — group leakage must be prevented.",
         "fit_rule": "Train on a subset of groups; hold out a disjoint set of groups for validation.",
         "validation_rule": "Ensure no group appears in both train and validation splits.",
-        "avoid": ["kfold", "random_holdout"],
+        "strategies_to_avoid": ["kfold", "random_holdout"],
     },
     "group_time_split": {
         "strategy": "group_time_split",
@@ -59,7 +59,7 @@ _STRATEGIES = {
         "reason": "Both group and temporal structure exist; splits must respect both dimensions.",
         "fit_rule": "Train on groups up to time cutoff; validate on same groups after cutoff or new groups.",
         "validation_rule": "Ensure temporal ordering is preserved within each group.",
-        "avoid": ["kfold", "random_holdout"],
+        "strategies_to_avoid": ["kfold", "random_holdout"],
     },
     "iid_random": {
         "strategy": "kfold",
@@ -67,8 +67,36 @@ _STRATEGIES = {
         "reason": "No strong temporal or group signal detected; iid assumption is reasonable.",
         "fit_rule": "Use standard K-Fold or stratified K-Fold cross-validation.",
         "validation_rule": "Randomly assign rows to folds.",
-        "avoid": ["time_holdout"],
+        "strategies_to_avoid": ["time_holdout"],
     },
+}
+
+_RISK_MESSAGES = {
+    "within_period": (
+        "Random k-fold on within-period data leaks future observations into training folds, "
+        "inflating CV scores. Time holdout treats this as pure forecasting and misses the "
+        "within-period structure entirely."
+    ),
+    "within_period_group": (
+        "Random k-fold leaks future observations and ignores group structure. "
+        "Time holdout ignores within-period overlap. Group k-fold ignores temporal ordering."
+    ),
+    "time_based_split": (
+        "Random k-fold or stratified k-fold will train on future data and validate on past data, "
+        "producing optimistic scores that will not hold in production."
+    ),
+    "group_based_split": (
+        "Random k-fold will put the same group in both train and validation, "
+        "leaking group-level signal and inflating scores."
+    ),
+    "group_time_split": (
+        "Random k-fold ignores both temporal and group structure. "
+        "Either violation alone inflates scores; together they compound."
+    ),
+    "iid_random": (
+        "No structural violation was detected. Standard k-fold is appropriate, "
+        "but verify that rows are truly independent before proceeding."
+    ),
 }
 
 
@@ -111,9 +139,12 @@ class ValidationRecommender:
                 "reason": "Rolling window validation can better capture temporal model decay.",
             })
 
+        why_risky = _RISK_MESSAGES.get(pattern, _RISK_MESSAGES["iid_random"])
+
         return {
             "detected_split_pattern": pattern,
             "evidence": evidence,
+            "why_generic_validation_is_risky": why_risky,
             "recommendation": base,
             "alternatives": alternatives,
         }

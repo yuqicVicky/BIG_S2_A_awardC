@@ -1,4 +1,4 @@
-"""Write JSON logs and a Markdown summary report."""
+"""Write JSON logs and a Markdown narrative report."""
 
 from __future__ import annotations
 
@@ -6,6 +6,17 @@ import json
 import os
 import datetime
 from typing import Any
+
+
+_PATTERN_NAMES = {
+    "within_period": "Within-Period Latest-Available",
+    "within_period_group": "Within-Period + Group",
+    "time_based_split": "Strict Time Split (Forecasting)",
+    "group_based_split": "Group Split (Unseen Groups)",
+    "group_time_split": "Group + Time Split",
+    "iid_random": "i.i.d. Random",
+    "unknown": "Unknown",
+}
 
 
 class ReportWriter:
@@ -41,7 +52,7 @@ class ReportWriter:
         md = self._build_markdown(
             schema_report=schema_report,
             feature_type_report=feature_type_report,
-            distribution_shift_report=distribution_shift_report,
+            train_prediction_pattern=train_prediction_pattern,
             target_pattern_report=target_pattern_report,
             leakage_report=leakage_report,
             validation_recommendation=validation_recommendation,
@@ -61,129 +72,250 @@ class ReportWriter:
         *,
         schema_report: dict,
         feature_type_report: dict,
-        distribution_shift_report: dict,
+        train_prediction_pattern: dict,
         target_pattern_report: dict,
         leakage_report: dict,
         validation_recommendation: dict,
         feature_recommendation: dict,
     ) -> str:
         ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        lines = [f"# Data Pattern & Validation Audit Report\n\n_Generated: {ts}_\n"]
+        lines = [
+            f"# Data Pattern & Validation Audit",
+            f"",
+            f"_Generated: {ts}_",
+            f"",
+            f"---",
+            f"",
+        ]
 
-        # --- Schema ---
-        lines.append("## 1. Schema Summary\n")
-        t = schema_report.get("train", {})
-        lines.append(f"- **Train rows:** {t.get('row_count', 'N/A')}")
-        lines.append(f"- **Train columns:** {t.get('col_count', 'N/A')}")
-        if "predict" in schema_report:
-            p = schema_report["predict"]
-            lines.append(f"- **Predict rows:** {p.get('row_count', 'N/A')}")
-            lines.append(f"- **Predict columns:** {p.get('col_count', 'N/A')}")
-        cmp = schema_report.get("comparison", {})
-        if cmp.get("train_only_columns"):
-            lines.append(f"- **Train-only columns:** {', '.join(cmp['train_only_columns'])}")
-        if cmp.get("predict_only_columns"):
-            lines.append(f"- **Predict-only columns:** {', '.join(cmp['predict_only_columns'])}")
-        lines.append("")
+        # --- Section 1: What pattern was detected ---
+        pattern = train_prediction_pattern.get("pattern", "unknown")
+        pattern_label = _PATTERN_NAMES.get(pattern, pattern)
+        evidence = train_prediction_pattern.get("evidence", [])
 
-        # --- Feature Types ---
-        lines.append("## 2. Feature Type Summary\n")
-        type_summary = feature_type_report.get("type_summary", {})
-        if type_summary:
-            lines.append("| Type | Count |")
-            lines.append("|------|-------|")
-            for t_name, n_of_type in sorted(type_summary.items(), key=lambda x: -x[1]):
-                lines.append(f"| {t_name} | {n_of_type} |")
-        lines.append("")
+        lines += [
+            "## 1. Detected Data Pattern",
+            "",
+            f"**Pattern: `{pattern_label}`**",
+            "",
+        ]
 
-        # --- Split Pattern ---
-        lines.append("## 3. Detected Split Pattern\n")
-        sp = distribution_shift_report.get("split_pattern", {})
-        lines.append(f"- **Pattern:** `{sp.get('pattern', 'unknown')}`")
-        for ev in sp.get("evidence", []):
-            lines.append(f"  - {ev}")
-        lines.append("")
-
-        # --- Distribution Shift ---
-        lines.append("## 4. Distribution Shift\n")
-        shifts = distribution_shift_report.get("numeric_shift", [])
-        detected_shifts = [s for s in shifts if s.get("shift_detected")]
-        if detected_shifts:
-            lines.append(f"**{len(detected_shifts)} column(s) with detected shift:**\n")
-            lines.append("| Column | KS Stat | p-value | Train Mean | Predict Mean |")
-            lines.append("|--------|---------|---------|------------|--------------|")
-            for s in detected_shifts[:20]:
-                lines.append(
-                    f"| {s['column']} | {s.get('ks_statistic','N/A')} "
-                    f"| {s.get('ks_pvalue','N/A')} "
-                    f"| {s.get('train_mean','N/A')} "
-                    f"| {s.get('predict_mean','N/A')} |"
-                )
+        if evidence:
+            lines.append("Evidence from train/prediction comparison:")
+            for ev in evidence:
+                lines.append(f"- {ev}")
         else:
-            lines.append("No significant numeric distribution shifts detected.")
+            lines.append("- No strong structural signal detected in the data.")
+
+        schema_mismatch = train_prediction_pattern.get("schema_mismatch", {})
+        train_only = schema_mismatch.get("train_only_columns", [])
+        predict_only = schema_mismatch.get("predict_only_columns", [])
+        if train_only:
+            lines.append(f"- Train-only columns (absent from predict): `{'`, `'.join(train_only)}`")
+        if predict_only:
+            lines.append(f"- Predict-only columns (absent from train): `{'`, `'.join(predict_only)}`")
+
+        t_schema = schema_report.get("train", {})
+        p_schema = schema_report.get("predict", {})
+        lines += [
+            "",
+            f"**Dataset shape:** train {t_schema.get('row_count', '?')} rows × "
+            f"{t_schema.get('col_count', '?')} cols",
+        ]
+        if p_schema:
+            lines[-1] += f" | predict {p_schema.get('row_count', '?')} rows × {p_schema.get('col_count', '?')} cols"
         lines.append("")
 
-        # --- Target Patterns ---
-        lines.append("## 5. Target Pattern Highlights\n")
+        # --- Section 2: Why generic validation is risky ---
+        why_risky = validation_recommendation.get("why_generic_validation_is_risky", "")
+        lines += [
+            "## 2. Why Generic Validation Is Risky Here",
+            "",
+        ]
+        if why_risky:
+            lines.append(why_risky)
+        else:
+            lines.append("Standard validation may be appropriate for this data structure.")
+
+        avoid = validation_recommendation.get("recommendation", {}).get("strategies_to_avoid", [])
+        if avoid:
+            lines += [
+                "",
+                f"**Do not use:** {', '.join(f'`{s}`' for s in avoid)}",
+            ]
+        lines.append("")
+
+        # --- Section 3: Validation Recommendation ---
+        rec = validation_recommendation.get("recommendation", {})
+        confidence = rec.get("confidence", "?")
+        strategy = rec.get("strategy", "?")
+        alts = validation_recommendation.get("alternatives", [])
+
+        lines += [
+            "## 3. Recommended Validation Strategy",
+            "",
+            f"**Strategy: `{strategy}`** (Confidence: {confidence})",
+            "",
+            f"_{rec.get('reason', '')}_",
+            "",
+            f"**Fit rule:** {rec.get('fit_rule', '')}",
+            "",
+            f"**Validation rule:** {rec.get('validation_rule', '')}",
+            "",
+        ]
+        if alts:
+            lines.append("**Alternatives to consider:**")
+            for a in alts:
+                lines.append(f"- `{a['strategy']}`: {a['reason']}")
+            lines.append("")
+
+        # --- Section 4: Leakage Audit ---
+        summary = leakage_report.get("summary", {})
+        high_risks = [r for r in leakage_report.get("risks", []) if r.get("severity") == "high"]
+        med_risks = [r for r in leakage_report.get("risks", []) if r.get("severity") == "medium"]
+
+        lines += [
+            "## 4. Leakage Audit",
+            "",
+            f"| Severity | Count |",
+            f"|----------|-------|",
+            f"| High     | {summary.get('high', 0)} |",
+            f"| Medium   | {summary.get('medium', 0)} |",
+            f"| Low      | {summary.get('low', 0)} |",
+            "",
+        ]
+        if high_risks:
+            lines.append("**High-risk columns — exclude from features:**")
+            for r in high_risks:
+                lines.append(f"- `{r['column']}` ({r['risk_type']}): {r['reason']}")
+            lines.append("")
+        if med_risks:
+            lines.append("**Medium-risk columns — verify before using:**")
+            for r in med_risks[:10]:
+                lines.append(f"- `{r['column']}` ({r['risk_type']}): {r['recommendation']}")
+            lines.append("")
+
+        # --- Section 5: Top Target Patterns ---
         top_corrs = [
             c for c in target_pattern_report.get("numeric_correlations", [])
             if c.get("pearson_r") is not None
-        ][:5]
+        ][:8]
+        dt_patterns = target_pattern_report.get("datetime_target_patterns", [])
+        cat_patterns = target_pattern_report.get("categorical_target_means", [])[:3]
+        group_patterns = target_pattern_report.get("group_target_patterns", [])
+
+        lines += [
+            "## 5. Target Pattern Highlights",
+            "",
+        ]
+
         if top_corrs:
-            lines.append("**Top numeric correlations with target:**\n")
-            lines.append("| Column | Pearson r |")
-            lines.append("|--------|-----------|")
+            lines += [
+                "**Numeric feature correlations with target:**",
+                "",
+                "| Column | Pearson r | Signal |",
+                "|--------|-----------|--------|",
+            ]
             for c in top_corrs:
-                lines.append(f"| {c['column']} | {c['pearson_r']:.4f} |")
-        lines.append("")
+                r = c["pearson_r"]
+                signal = "strong" if abs(r) > 0.5 else "moderate" if abs(r) > 0.2 else "weak"
+                lines.append(f"| `{c['column']}` | {r:+.4f} | {signal} |")
+            lines.append("")
 
-        # --- Leakage ---
-        lines.append("## 6. Leakage & Feature Availability Audit\n")
-        summary = leakage_report.get("summary", {})
-        lines.append(
-            f"- **High risk:** {summary.get('high', 0)}  "
-            f"**Medium risk:** {summary.get('medium', 0)}  "
-            f"**Low risk:** {summary.get('low', 0)}"
-        )
-        high_risks = [r for r in leakage_report.get("risks", []) if r.get("severity") == "high"]
-        if high_risks:
-            lines.append("\n**High-risk columns:**\n")
-            for r in high_risks:
-                lines.append(f"- `{r['column']}` — {r['reason']}")
-        lines.append("")
+        if dt_patterns:
+            lines.append("**Datetime feature target patterns detected:**")
+            for dp in dt_patterns:
+                comp_keys = [k for k in dp.get("by_component", {}).keys() if "_x_" not in k]
+                inter_keys = [k for k in dp.get("by_component", {}).keys() if "_x_" in k]
+                lines.append(f"- `{dp['column']}`: components={comp_keys}, interactions={inter_keys}")
+            lines.append("")
 
-        # --- Validation Recommendation ---
-        lines.append("## 7. Validation Recommendation\n")
-        rec = validation_recommendation.get("recommendation", {})
-        lines.append(f"**Recommended Strategy:** `{rec.get('strategy', 'N/A')}`\n")
-        lines.append(f"- **Confidence:** {rec.get('confidence', 'N/A')}")
-        lines.append(f"- **Reason:** {rec.get('reason', '')}")
-        lines.append(f"- **Fit rule:** {rec.get('fit_rule', '')}")
-        lines.append(f"- **Validation rule:** {rec.get('validation_rule', '')}")
-        avoid = rec.get("avoid", [])
-        if avoid:
-            lines.append(f"- **Avoid:** {', '.join(avoid)}")
-        alts = validation_recommendation.get("alternatives", [])
-        if alts:
-            lines.append("\n**Alternative strategies:**")
-            for a in alts:
-                lines.append(f"- `{a['strategy']}`: {a['reason']}")
-        lines.append("")
+        if cat_patterns:
+            lines.append("**Categorical features with target variation:**")
+            for cp in cat_patterns:
+                n = cp.get("n_categories", "?")
+                lines.append(f"- `{cp['column']}` ({n} categories)")
+            lines.append("")
 
-        # --- Feature Engineering Recommendations ---
-        lines.append("## 8. Feature Engineering Recommendations\n")
-        per_col = feature_recommendation.get("per_column", [])
-        high_signal = feature_recommendation.get("high_signal_numeric", [])
-        if per_col:
-            lines.append("| Column | Action | Reason |")
-            lines.append("|--------|--------|--------|")
-            for r in per_col[:30]:
-                lines.append(f"| {r['column']} | {r['action']} | {r['reason']} |")
-        if high_signal:
-            lines.append("\n**High-signal numeric features (|r| > 0.3):**")
-            for r in high_signal:
-                lines.append(f"- `{r['column']}`: {r['reason']}")
-        lines.append("")
+        if group_patterns:
+            lines.append("**Group/entity features with target variation:**")
+            for gp in group_patterns:
+                n = gp.get("n_groups", "?")
+                lines.append(f"- `{gp['column']}` ({n} groups)")
+            lines.append("")
+
+        # --- Section 6: Feature Recommendations ---
+        fe = feature_recommendation
+        lines += [
+            "## 6. Feature Recommendations",
+            "",
+        ]
+
+        features_to_add = fe.get("features_to_add", [])
+        if features_to_add:
+            lines += [
+                "### Features to Add",
+                "",
+                "| Feature | Source | Type | Reason |",
+                "|---------|--------|------|--------|",
+            ]
+            for f in features_to_add[:20]:
+                lines.append(f"| `{f['feature']}` | `{f.get('source_col', '')}` | {f.get('type', '')} | {f['reason']} |")
+            lines.append("")
+
+        features_to_exclude = fe.get("features_to_exclude", [])
+        if features_to_exclude:
+            lines += [
+                "### Features to Exclude",
+                "",
+            ]
+            for f in features_to_exclude[:20]:
+                lines.append(f"- `{f['column']}`: {f['reason']}")
+            lines.append("")
+
+        interactions = fe.get("interactions_to_try", [])
+        if interactions:
+            lines += [
+                "### Interactions to Try",
+                "",
+            ]
+            for i in interactions:
+                lines.append(f"- **{i['interaction']}** ({i['type']}): {i['reason']}")
+            lines.append("")
+
+        transforms = fe.get("target_transforms_to_try", [])
+        if transforms:
+            lines += [
+                "### Target Transforms to Try",
+                "",
+            ]
+            for t in transforms:
+                lines.append(f"- `{t['transform']}`: {t['reason']}")
+            lines.append("")
+
+        fe_warnings = fe.get("warnings", [])
+        if fe_warnings:
+            lines += [
+                "### Warnings",
+                "",
+            ]
+            for w in fe_warnings:
+                cols = ", ".join(f"`{c}`" for c in w.get("columns", []))
+                lines.append(f"- **{w['type']}** [{cols}]: {w['message']}")
+            lines.append("")
+
+        # --- Section 7: Feature Type Summary ---
+        type_summary = feature_type_report.get("type_summary", {})
+        if type_summary:
+            lines += [
+                "## 7. Feature Type Summary",
+                "",
+                "| Type | Count |",
+                "|------|-------|",
+            ]
+            for t_name, n_of_type in sorted(type_summary.items(), key=lambda x: -x[1]):
+                lines.append(f"| `{t_name}` | {n_of_type} |")
+            lines.append("")
 
         return "\n".join(lines)
 

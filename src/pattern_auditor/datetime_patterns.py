@@ -44,6 +44,7 @@ class DatetimePatternAnalyser:
             out["__dayofyear"] = ts.dt.dayofyear
             out["__weekofyear"] = ts.dt.isocalendar().week.astype(int)
             out["__is_weekend"] = (ts.dt.dayofweek >= 5).astype(int)
+            out["__is_workingday"] = (ts.dt.dayofweek < 5).astype(int)
             out["__quarter"] = ts.dt.quarter
         return out
 
@@ -81,6 +82,24 @@ class DatetimePatternAnalyser:
             )
             agg2.columns = ["hour", "dayofweek", "target_mean"]
             result["hour_x_dayofweek"] = agg2.to_dict(orient="records")
+
+        if "__hour" in df.columns and "__is_workingday" in df.columns:
+            agg_wd = (
+                df.groupby(["__hour", "__is_workingday"])[self.target_col]
+                .mean()
+                .reset_index()
+            )
+            agg_wd.columns = ["hour", "is_workingday", "target_mean"]
+            result["hour_x_workingday"] = agg_wd.to_dict(orient="records")
+
+        if "__hour" in df.columns and "__is_weekend" in df.columns:
+            agg_we = (
+                df.groupby(["__hour", "__is_weekend"])[self.target_col]
+                .mean()
+                .reset_index()
+            )
+            agg_we.columns = ["hour", "is_weekend", "target_mean"]
+            result["hour_x_weekend"] = agg_we.to_dict(orient="records")
 
         if "__month" in df.columns and "__year" in df.columns:
             agg3 = (

@@ -116,6 +116,19 @@ def test_json_logs_written():
             assert fname in os.listdir(logs_dir), f"Missing log: {fname}"
 
 
+def test_hour_workingday_heatmap_generated_with_hourly_data():
+    train, predict = _minimal_within_period()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        auditor = PatternAuditor(
+            train, predict,
+            target_col="target",
+            datetime_col="timestamp",
+        )
+        auditor.run(output_dir=tmpdir)
+        fig_dir = os.path.join(tmpdir, "figures")
+        assert "hour_by_workingday_heatmap.png" in os.listdir(fig_dir)
+
+
 def test_markdown_report_written():
     train, predict = _minimal_within_period()
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -129,5 +142,24 @@ def test_markdown_report_written():
         assert os.path.exists(report_path)
         with open(report_path) as f:
             content = f.read()
-        assert "Validation Recommendation" in content
+        assert "Validation Recommendation" in content or "Recommended Validation" in content
         assert "Leakage" in content
+
+
+def test_markdown_narrative_tells_story():
+    """pattern_audit.md must contain the narrative sections."""
+    train, predict = _minimal_within_period()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        auditor = PatternAuditor(
+            train, predict,
+            target_col="target",
+            datetime_col="timestamp",
+        )
+        auditor.run(output_dir=tmpdir)
+        report_path = os.path.join(tmpdir, "reports", "pattern_audit.md")
+        with open(report_path) as f:
+            content = f.read()
+        assert "Detected Data Pattern" in content
+        assert "Why Generic Validation Is Risky" in content
+        assert "Recommended Validation Strategy" in content
+        assert "Feature Recommendations" in content

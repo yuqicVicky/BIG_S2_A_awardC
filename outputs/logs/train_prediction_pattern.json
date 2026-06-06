@@ -1,47 +1,17 @@
 {
-  "row_counts": {
-    "train": 1350,
-    "predict": 150
+  "pattern": "within_period_group",
+  "evidence": [
+    "timestamp: predict starts after train ends \u2192 time-based split",
+    "hour: predict overlaps or precedes train max \u2192 within-period pattern",
+    "dayofweek: predict overlaps or precedes train max \u2192 within-period pattern"
+  ],
+  "schema_mismatch": {
+    "train_only_columns": [
+      "target"
+    ],
+    "predict_only_columns": [],
+    "dtype_mismatches": {}
   },
-  "numeric_shift": [
-    {
-      "column": "numeric_feature",
-      "ks_statistic": 0.077,
-      "ks_pvalue": 0.3842,
-      "shift_detected": false,
-      "train_mean": 49.931,
-      "predict_mean": 50.3668
-    }
-  ],
-  "categorical_overlap": [
-    {
-      "column": "entity_id",
-      "n_train_categories": 50,
-      "n_predict_categories": 50,
-      "n_overlap": 50,
-      "overlap_ratio": 1.0,
-      "train_only_categories": [],
-      "predict_only_categories": []
-    },
-    {
-      "column": "category",
-      "n_train_categories": 3,
-      "n_predict_categories": 3,
-      "n_overlap": 3,
-      "overlap_ratio": 1.0,
-      "train_only_categories": [],
-      "predict_only_categories": []
-    },
-    {
-      "column": "text_note",
-      "n_train_categories": 3,
-      "n_predict_categories": 3,
-      "n_overlap": 3,
-      "overlap_ratio": 1.0,
-      "train_only_categories": [],
-      "predict_only_categories": []
-    }
-  ],
   "datetime_coverage": [
     {
       "column": "timestamp",
@@ -71,12 +41,10 @@
       "time_gap_days": -0.0
     }
   ],
-  "split_pattern": {
-    "pattern": "within_period_group",
-    "evidence": [
-      "timestamp: predict starts after train ends \u2192 time-based split",
-      "hour: predict overlaps or precedes train max \u2192 within-period pattern",
-      "dayofweek: predict overlaps or precedes train max \u2192 within-period pattern"
-    ]
+  "category_mismatch_columns": [],
+  "numeric_distribution_shift": {
+    "total_columns_tested": 1,
+    "shift_detected_count": 0,
+    "columns_with_shift": []
   }
 }
