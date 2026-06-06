@@ -1,0 +1,23 @@
+{
+  "risks": [
+    {
+      "column": "target_component_1",
+      "risk_type": "train_only_feature",
+      "severity": "high",
+      "reason": "Column is present in training data but absent in prediction data. If used as a feature, the model cannot generate predictions.",
+      "recommendation": "Drop this column from features or investigate if it should exist in predict data."
+    },
+    {
+      "column": "target_component_2",
+      "risk_type": "train_only_feature",
+      "severity": "high",
+      "reason": "Column is present in training data but absent in prediction data. If used as a feature, the model cannot generate predictions.",
+      "recommendation": "Drop this column from features or investigate if it should exist in predict data."
+    }
+  ],
+  "summary": {
+    "high": 2,
+    "medium": 0,
+    "low": 0
+  }
+}

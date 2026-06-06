@@ -1,0 +1,39 @@
+{
+  "columns": {
+    "store_id": {
+      "available_at_prediction": true,
+      "inferred_type": "group_entity_id",
+      "leakage_risk": "none",
+      "leakage_type": null,
+      "action": "use"
+    },
+    "sales_volume": {
+      "available_at_prediction": true,
+      "inferred_type": "numeric_continuous",
+      "leakage_risk": "none",
+      "leakage_type": null,
+      "action": "use"
+    },
+    "promo_flag": {
+      "available_at_prediction": true,
+      "inferred_type": "boolean_binary",
+      "leakage_risk": "none",
+      "leakage_type": null,
+      "action": "use"
+    }
+  },
+  "summary": {
+    "total_train_columns": 4,
+    "available_at_prediction": 3,
+    "train_only": 0,
+    "predict_only": 0,
+    "high_leakage_risk": 0
+  },
+  "columns_to_use": [
+    "store_id",
+    "sales_volume",
+    "promo_flag"
+  ],
+  "columns_to_exclude": [],
+  "columns_to_verify": []
+}

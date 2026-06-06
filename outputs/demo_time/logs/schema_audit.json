@@ -1,0 +1,128 @@
+{
+  "train": {
+    "split": "train",
+    "row_count": 181,
+    "col_count": 4,
+    "columns": {
+      "date": {
+        "dtype": "datetime64[ns]",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 181,
+        "row_count": 181,
+        "sample_values": [
+          "2023-01-01 00:00:00",
+          "2023-01-02 00:00:00",
+          "2023-01-03 00:00:00",
+          "2023-01-04 00:00:00",
+          "2023-01-05 00:00:00"
+        ]
+      },
+      "numeric_feat": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 181,
+        "row_count": 181,
+        "sample_values": [
+          "3.3047",
+          "1.96",
+          "3.7505",
+          "3.9406",
+          "1.049"
+        ]
+      },
+      "category": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 3,
+        "row_count": 181,
+        "sample_values": [
+          "low",
+          "high",
+          "low",
+          "mid",
+          "high"
+        ]
+      },
+      "target": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 179,
+        "row_count": 181,
+        "sample_values": [
+          "54.957",
+          "54.637",
+          "57.587",
+          "58.041",
+          "52.668"
+        ]
+      }
+    }
+  },
+  "predict": {
+    "split": "predict",
+    "row_count": 184,
+    "col_count": 3,
+    "columns": {
+      "date": {
+        "dtype": "datetime64[ns]",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 184,
+        "row_count": 184,
+        "sample_values": [
+          "2023-07-01 00:00:00",
+          "2023-07-02 00:00:00",
+          "2023-07-03 00:00:00",
+          "2023-07-04 00:00:00",
+          "2023-07-05 00:00:00"
+        ]
+      },
+      "numeric_feat": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 184,
+        "row_count": 184,
+        "sample_values": [
+          "3.2194",
+          "2.5891",
+          "4.1063",
+          "3.4288",
+          "4.5358"
+        ]
+      },
+      "category": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 3,
+        "row_count": 184,
+        "sample_values": [
+          "mid",
+          "high",
+          "mid",
+          "high",
+          "mid"
+        ]
+      }
+    }
+  },
+  "comparison": {
+    "train_only_columns": [
+      "target"
+    ],
+    "predict_only_columns": [],
+    "common_columns": [
+      "category",
+      "date",
+      "numeric_feat"
+    ],
+    "dtype_mismatches": {},
+    "row_count_train": 181,
+    "row_count_predict": 184
+  }
+}

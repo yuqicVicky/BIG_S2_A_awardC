@@ -1,0 +1,32 @@
+{
+  "pattern": "time_based_split",
+  "evidence": [
+    "timestamp: predict starts after train ends \u2192 time-based split"
+  ],
+  "schema_mismatch": {
+    "train_only_columns": [
+      "target",
+      "target_component_1",
+      "target_component_2"
+    ],
+    "predict_only_columns": [],
+    "dtype_mismatches": {}
+  },
+  "datetime_coverage": [
+    {
+      "column": "timestamp",
+      "train_min": "2023-01-01 00:00:00",
+      "train_max": "2023-01-21 19:00:00",
+      "predict_min": "2023-02-01 00:00:00",
+      "predict_max": "2023-02-05 03:00:00",
+      "predict_after_train": true,
+      "time_gap_days": 10.21
+    }
+  ],
+  "category_mismatch_columns": [],
+  "numeric_distribution_shift": {
+    "total_columns_tested": 1,
+    "shift_detected_count": 0,
+    "columns_with_shift": []
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "detected_split_pattern": "within_period_group",
+  "evidence": [
+    "timestamp: predict overlaps or precedes train max \u2192 within-period pattern"
+  ],
+  "why_generic_validation_is_risky": "Random k-fold leaks future observations and ignores group structure. Time holdout ignores within-period overlap. Group k-fold ignores temporal ordering.",
+  "recommendation": {
+    "strategy": "within_period_latest_available_holdout",
+    "confidence": "high",
+    "reason": "Prediction period overlaps training AND groups have partial overlap. Use within-period latest-available holdout stratified by group.",
+    "fit_rule": "Train on all but the latest N observations per group per period.",
+    "validation_rule": "Validate on the latest per-group observations.",
+    "strategies_to_avoid": [
+      "time_holdout",
+      "kfold"
+    ]
+  },
+  "alternatives": []
+}

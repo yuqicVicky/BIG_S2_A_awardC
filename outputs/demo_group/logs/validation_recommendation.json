@@ -1,0 +1,19 @@
+{
+  "detected_split_pattern": "group_based_split",
+  "evidence": [
+    "store_id: low group overlap (0.00) \u2192 group split"
+  ],
+  "why_generic_validation_is_risky": "Random k-fold will put the same group in both train and validation, leaking group-level signal and inflating scores.",
+  "recommendation": {
+    "strategy": "group_split",
+    "confidence": "high",
+    "reason": "Prediction groups are largely unseen at training time \u2014 group leakage must be prevented.",
+    "fit_rule": "Train on a subset of groups; hold out a disjoint set of groups for validation.",
+    "validation_rule": "Ensure no group appears in both train and validation splits.",
+    "strategies_to_avoid": [
+      "kfold",
+      "random_holdout"
+    ]
+  },
+  "alternatives": []
+}

@@ -1,0 +1,128 @@
+{
+  "train": {
+    "split": "train",
+    "row_count": 480,
+    "col_count": 4,
+    "columns": {
+      "store_id": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 4,
+        "row_count": 480,
+        "sample_values": [
+          "store_A",
+          "store_A",
+          "store_A",
+          "store_A",
+          "store_A"
+        ]
+      },
+      "sales_volume": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 479,
+        "row_count": 480,
+        "sample_values": [
+          "275.55",
+          "137.67",
+          "404.46",
+          "280.15",
+          "470.71"
+        ]
+      },
+      "promo_flag": {
+        "dtype": "int64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 2,
+        "row_count": 480,
+        "sample_values": [
+          "0",
+          "1",
+          "1",
+          "1",
+          "1"
+        ]
+      },
+      "target": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 451,
+        "row_count": 480,
+        "sample_values": [
+          "38.12",
+          "34.5",
+          "51.7",
+          "48.17",
+          "58.44"
+        ]
+      }
+    }
+  },
+  "predict": {
+    "split": "predict",
+    "row_count": 240,
+    "col_count": 3,
+    "columns": {
+      "store_id": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 2,
+        "row_count": 240,
+        "sample_values": [
+          "store_E",
+          "store_E",
+          "store_E",
+          "store_E",
+          "store_E"
+        ]
+      },
+      "sales_volume": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 239,
+        "row_count": 240,
+        "sample_values": [
+          "100.43",
+          "358.52",
+          "456.11",
+          "474.22",
+          "186.07"
+        ]
+      },
+      "promo_flag": {
+        "dtype": "int64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 2,
+        "row_count": 240,
+        "sample_values": [
+          "0",
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    }
+  },
+  "comparison": {
+    "train_only_columns": [
+      "target"
+    ],
+    "predict_only_columns": [],
+    "common_columns": [
+      "promo_flag",
+      "sales_volume",
+      "store_id"
+    ],
+    "dtype_mismatches": {},
+    "row_count_train": 480,
+    "row_count_predict": 240
+  }
+}

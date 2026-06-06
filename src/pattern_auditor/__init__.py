@@ -1,32 +1,28 @@
 """
-Data Pattern & Validation Auditor
-==================================
-A statistical agent skill that helps autonomous data-science agents understand
-data patterns before modeling.
+Train-Test Pattern Auditor
+==========================
+A lightweight pre-modeling skill that helps autonomous data-science agents
+avoid misleading validation and leakage before any model is trained.
 
 Main entry point:
     from pattern_auditor import PatternAuditor
     auditor = PatternAuditor(train_df, predict_df, target_col="target")
-    report = auditor.run(output_dir="outputs/")
+    results = auditor.run(output_dir="outputs/")
 """
 
 from .schema import SchemaInspector
 from .feature_types import FeatureTypeInferrer
-from .datetime_patterns import DatetimePatternAnalyser
-from .target_patterns import TargetPatternAnalyser
 from .distribution_shift import DistributionShiftDetector
 from .leakage import LeakageAuditor
 from .validation import ValidationRecommender
 from .visualization import Visualizer
 from .reporting import ReportWriter
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "PatternAuditor",
     "SchemaInspector",
     "FeatureTypeInferrer",
-    "DatetimePatternAnalyser",
-    "TargetPatternAnalyser",
     "DistributionShiftDetector",
     "LeakageAuditor",
     "ValidationRecommender",
@@ -58,11 +54,9 @@ class PatternAuditor:
         self.schema_report: dict = {}
         self.feature_type_report: dict = {}
         self.train_prediction_pattern: dict = {}
-        self.distribution_shift_report: dict = {}
-        self.target_pattern_report: dict = {}
         self.leakage_report: dict = {}
+        self.feature_availability_audit: dict = {}
         self.validation_recommendation: dict = {}
-        self.feature_recommendation: dict = {}
 
     def run(self, output_dir: str = "outputs/") -> dict:
         import os
@@ -71,11 +65,11 @@ class PatternAuditor:
         os.makedirs(os.path.join(output_dir, "figures"), exist_ok=True)
         os.makedirs(os.path.join(output_dir, "reports"), exist_ok=True)
 
-        # 1. Schema understanding
+        # 1. Schema audit
         schema = SchemaInspector(self.train_df, self.predict_df)
         self.schema_report = schema.inspect()
 
-        # 2. Feature type inference
+        # 2. Feature type inference (drives all downstream steps)
         fti = FeatureTypeInferrer(
             self.train_df,
             self.predict_df,
@@ -90,23 +84,12 @@ class PatternAuditor:
         dsd = DistributionShiftDetector(
             self.train_df, self.predict_df, self.feature_type_report
         )
-        self.distribution_shift_report = dsd.detect()
+        distribution_shift = dsd.detect()
         self.train_prediction_pattern = _build_train_prediction_pattern(
-            self.schema_report, self.distribution_shift_report
+            self.schema_report, distribution_shift
         )
 
-        # 4. Target-aware pattern discovery
-        if self.target_col and self.target_col in self.train_df.columns:
-            tpa = TargetPatternAnalyser(
-                self.train_df,
-                self.target_col,
-                self.feature_type_report,
-            )
-            self.target_pattern_report = tpa.analyse()
-        else:
-            self.target_pattern_report = {"warning": "No target column provided."}
-
-        # 5. Leakage audit
+        # 4. Leakage audit
         la = LeakageAuditor(
             self.train_df,
             self.predict_df,
@@ -115,59 +98,50 @@ class PatternAuditor:
         )
         self.leakage_report = la.audit()
 
+        # 5. Feature availability audit (answers: available vs unavailable at prediction time)
+        self.feature_availability_audit = _build_feature_availability_audit(
+            self.feature_type_report,
+            self.leakage_report,
+            self.schema_report,
+            target_col=self.target_col,
+        )
+
         # 6. Validation recommendation
         vr = ValidationRecommender(
             self.train_df,
             self.predict_df,
             self.feature_type_report,
-            self.distribution_shift_report,
+            distribution_shift,
             target_col=self.target_col,
         )
         self.validation_recommendation = vr.recommend()
 
-        # 7. Feature recommendation
-        self.feature_recommendation = _build_feature_recommendation(
-            self.feature_type_report,
-            self.target_pattern_report,
-            self.leakage_report,
-            self.distribution_shift_report,
-            self.train_prediction_pattern,
-        )
-
-        # 8. Visualizations
+        # 7. Visualizations (3 figures)
         viz = Visualizer(
             self.train_df,
             self.predict_df,
             self.feature_type_report,
-            self.target_pattern_report,
-            self.distribution_shift_report,
+            distribution_shift,
             self.leakage_report,
-            target_col=self.target_col,
         )
         viz.generate_all(figures_dir=os.path.join(output_dir, "figures"))
 
-        # 9. Write reports
+        # 8. Write reports
         rw = ReportWriter(output_dir)
         rw.write_all(
             schema_report=self.schema_report,
-            feature_type_report=self.feature_type_report,
+            feature_availability_audit=self.feature_availability_audit,
             train_prediction_pattern=self.train_prediction_pattern,
-            target_pattern_report=self.target_pattern_report,
-            distribution_shift_report=self.distribution_shift_report,
             leakage_report=self.leakage_report,
             validation_recommendation=self.validation_recommendation,
-            feature_recommendation=self.feature_recommendation,
         )
 
         return {
             "schema": self.schema_report,
-            "feature_types": self.feature_type_report,
+            "feature_availability": self.feature_availability_audit,
             "train_prediction_pattern": self.train_prediction_pattern,
-            "distribution_shift": self.distribution_shift_report,
-            "target_patterns": self.target_pattern_report,
             "leakage": self.leakage_report,
             "validation": self.validation_recommendation,
-            "feature_engineering": self.feature_recommendation,
         }
 
 
@@ -179,7 +153,6 @@ def _build_train_prediction_pattern(
     schema_report: dict,
     distribution_shift_report: dict,
 ) -> dict:
-    """Produce a focused train/prediction comparison report."""
     cmp = schema_report.get("comparison", {})
     split = distribution_shift_report.get("split_pattern", {})
     numeric_shifts = distribution_shift_report.get("numeric_shift", [])
@@ -211,174 +184,84 @@ def _build_train_prediction_pattern(
 
 
 # ---------------------------------------------------------------------------
-# Feature recommendation builder
+# Feature availability audit builder
 # ---------------------------------------------------------------------------
 
-def _build_feature_recommendation(
+def _build_feature_availability_audit(
     feature_type_report: dict,
-    target_pattern_report: dict,
     leakage_report: dict,
-    distribution_shift_report: dict,
-    train_prediction_pattern: dict,
+    schema_report: dict,
+    *,
+    target_col: str | None = None,
 ) -> dict:
     ft = feature_type_report.get("columns", {})
-    split_pattern = train_prediction_pattern.get("pattern", "iid_random")
 
-    leakage_cols = {
-        item["column"]
+    leakage_by_col = {
+        item["column"]: item
         for item in leakage_report.get("risks", [])
-        if item.get("severity") == "high"
     }
 
-    features_to_add: list[dict] = []
-    features_to_exclude: list[dict] = []
-    interactions_to_try: list[dict] = []
-    target_transforms_to_try: list[dict] = []
-    warnings: list[dict] = []
+    columns: dict = {}
+    counts = {
+        "total_train_columns": 0,
+        "available_at_prediction": 0,
+        "train_only": 0,
+        "predict_only": 0,
+        "high_leakage_risk": 0,
+    }
 
-    # --- features_to_add: datetime-derived components ---
-    datetime_cols = [c for c, i in ft.items() if i.get("inferred_type") == "datetime_like"]
-    for col in datetime_cols:
-        if col in leakage_cols:
-            continue
-        for comp, reason in [
-            ("hour", "Hour of day captures intra-day demand cycles"),
-            ("dayofweek", "Day of week captures weekly seasonality"),
-            ("month", "Month captures annual seasonality"),
-            ("is_weekend", "Binary weekday/weekend flag captures structural behavior change"),
-            ("is_workingday", "Working-day flag isolates business-hours patterns"),
-        ]:
-            features_to_add.append({
-                "feature": f"{col}__{comp}",
-                "source_col": col,
-                "type": "datetime_derived",
-                "reason": reason,
-            })
+    columns_to_use: list[str] = []
+    columns_to_exclude: list[str] = []
+    columns_to_verify: list[str] = []
 
-    # --- features_to_add: polynomial/log for high-signal numerics ---
-    for item in target_pattern_report.get("numeric_correlations", []):
-        r = item.get("pearson_r") or 0
-        col = item["column"]
-        if col in leakage_cols:
-            continue
-        if abs(r) > 0.3:
-            features_to_add.append({
-                "feature": f"{col}_sq",
-                "source_col": col,
-                "type": "polynomial",
-                "reason": f"|r|={abs(r):.3f} — non-linear term may capture additional variance",
-            })
+    train_col_count = schema_report.get("train", {}).get("col_count", 0)
+    counts["total_train_columns"] = train_col_count
 
-    # --- features_to_exclude: leakage + useless ---
     for col, info in ft.items():
-        ftype = info.get("inferred_type", "")
-        if col in leakage_cols:
-            features_to_exclude.append({
-                "column": col,
-                "reason": "High leakage risk — absent from prediction data or derived from target",
-            })
-        elif ftype in ("constant", "near_constant"):
-            features_to_exclude.append({
-                "column": col,
-                "reason": f"{ftype.replace('_', ' ')} — carries no generalizable signal",
-            })
+        ftype = info.get("inferred_type", "unknown")
 
-    # --- interactions_to_try: pattern-driven ---
-    group_cols = [c for c, i in ft.items() if i.get("inferred_type") == "group_entity_id"]
+        if col == target_col:
+            continue
 
-    if datetime_cols:
-        interactions_to_try.append({
-            "interaction": "hour × dayofweek",
-            "type": "datetime_interaction",
-            "reason": "Hour-of-day effect varies by day of week — key interaction for temporal models",
-        })
-        interactions_to_try.append({
-            "interaction": "hour × is_workingday",
-            "type": "datetime_interaction",
-            "reason": "Hour patterns differ significantly between working days and weekends",
-        })
+        leakage_entry = leakage_by_col.get(col)
+        leakage_severity = leakage_entry["severity"] if leakage_entry else "none"
+        leakage_type = leakage_entry["risk_type"] if leakage_entry else None
 
-    if datetime_cols and group_cols:
-        interactions_to_try.append({
-            "interaction": f"{datetime_cols[0]}__hour × {group_cols[0]}",
-            "type": "datetime_x_group",
-            "reason": "Temporal demand cycles typically differ by group/entity",
-        })
+        available = ftype not in ("train_only",)
+        predict_only = ftype == "prediction_only"
 
-    _is_temporal = (
-        "within_period" in split_pattern
-        or split_pattern in ("time_based_split", "group_time_split")
-    )
-    if _is_temporal and group_cols:
-        interactions_to_try.append({
-            "interaction": f"lag_target_by_{group_cols[0]}",
-            "type": "lag",
-            "reason": "Temporal pattern: recent target values per entity are typically the strongest predictor",
-        })
-        interactions_to_try.append({
-            "interaction": f"rolling_mean_by_{group_cols[0]}",
-            "type": "lag",
-            "reason": "Rolling average per entity captures trend and level shift over time",
-        })
+        if ftype == "train_only":
+            counts["train_only"] += 1
+            action = "exclude"
+            columns_to_exclude.append(col)
+        elif predict_only:
+            counts["predict_only"] += 1
+            action = "exclude"
+            columns_to_exclude.append(col)
+        elif leakage_severity == "high":
+            counts["high_leakage_risk"] += 1
+            action = "exclude"
+            columns_to_exclude.append(col)
+        elif leakage_severity == "medium":
+            action = "verify"
+            columns_to_verify.append(col)
+        else:
+            counts["available_at_prediction"] += 1
+            action = "use"
+            columns_to_use.append(col)
 
-    if "group" in split_pattern and group_cols:
-        interactions_to_try.append({
-            "interaction": f"group_target_encode_{group_cols[0]}",
-            "type": "group_encoding",
-            "reason": "Group split: target encoding with leave-one-group-out avoids group leakage",
-        })
-
-    # --- target_transforms_to_try ---
-    target_stats = target_pattern_report.get("target_stats", {})
-    if target_stats:
-        min_val = target_stats.get("min") or 0
-        mean_val = target_stats.get("mean") or 0
-        std_val = target_stats.get("std") or 1
-        if min_val > 0 and std_val > abs(mean_val) * 0.5:
-            target_transforms_to_try.append({
-                "transform": "log1p",
-                "reason": "Target is strictly positive with high relative std — log1p stabilizes variance",
-            })
-        p25 = target_stats.get("25%") or 0
-        p75 = target_stats.get("75%") or 0
-        if p75 > 0 and (p75 / max(p25, 1e-9)) > 10:
-            target_transforms_to_try.append({
-                "transform": "sqrt",
-                "reason": "IQR spans an order of magnitude — sqrt may reduce right skew",
-            })
-
-    # --- warnings ---
-    shifted_cols = train_prediction_pattern.get("numeric_distribution_shift", {}).get("columns_with_shift", [])
-    if shifted_cols:
-        warnings.append({
-            "type": "distribution_shift",
-            "columns": shifted_cols[:10],
-            "message": (
-                "These features show significant distribution shift between train and predict. "
-                "Models trained without accounting for this shift may degrade in production."
-            ),
-        })
-
-    high_card_cols = [c for c, i in ft.items() if i.get("inferred_type") == "categorical_high_cardinality"]
-    if high_card_cols:
-        warnings.append({
-            "type": "high_cardinality",
-            "columns": high_card_cols[:10],
-            "message": "Use target encoding with out-of-fold estimates or embeddings — naive one-hot will overfit.",
-        })
-
-    cat_mismatch = train_prediction_pattern.get("category_mismatch_columns", [])
-    if cat_mismatch:
-        warnings.append({
-            "type": "unseen_categories",
-            "columns": cat_mismatch[:10],
-            "message": "Prediction set contains categories not seen in training — model will encounter OOV at inference.",
-        })
+        columns[col] = {
+            "available_at_prediction": available and not predict_only,
+            "inferred_type": ftype,
+            "leakage_risk": leakage_severity,
+            "leakage_type": leakage_type,
+            "action": action,
+        }
 
     return {
-        "features_to_add": features_to_add,
-        "features_to_exclude": features_to_exclude,
-        "interactions_to_try": interactions_to_try,
-        "target_transforms_to_try": target_transforms_to_try,
-        "warnings": warnings,
+        "columns": columns,
+        "summary": counts,
+        "columns_to_use": columns_to_use,
+        "columns_to_exclude": columns_to_exclude,
+        "columns_to_verify": columns_to_verify,
     }

@@ -1,0 +1,129 @@
+{
+  "train": {
+    "split": "train",
+    "row_count": 500,
+    "col_count": 5,
+    "columns": {
+      "timestamp": {
+        "dtype": "datetime64[ns]",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 500,
+        "row_count": 500,
+        "sample_values": [
+          "2023-01-01 00:00:00",
+          "2023-01-01 01:00:00",
+          "2023-01-01 02:00:00",
+          "2023-01-01 03:00:00",
+          "2023-01-01 04:00:00"
+        ]
+      },
+      "numeric_feat": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 472,
+        "row_count": 500,
+        "sample_values": [
+          "2.434",
+          "2.375",
+          "4.325",
+          "3.33",
+          "2.788"
+        ]
+      },
+      "target_component_1": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 486,
+        "row_count": 500,
+        "sample_values": [
+          "10.609",
+          "7.92",
+          "11.501",
+          "11.881",
+          "6.098"
+        ]
+      },
+      "target_component_2": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 458,
+        "row_count": 500,
+        "sample_values": [
+          "6.364",
+          "5.895",
+          "4.281",
+          "3.497",
+          "2.035"
+        ]
+      },
+      "target": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 482,
+        "row_count": 500,
+        "sample_values": [
+          "16.944",
+          "13.451",
+          "15.574",
+          "15.696",
+          "8.135"
+        ]
+      }
+    }
+  },
+  "predict": {
+    "split": "predict",
+    "row_count": 100,
+    "col_count": 2,
+    "columns": {
+      "timestamp": {
+        "dtype": "datetime64[ns]",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 100,
+        "row_count": 100,
+        "sample_values": [
+          "2023-02-01 00:00:00",
+          "2023-02-01 01:00:00",
+          "2023-02-01 02:00:00",
+          "2023-02-01 03:00:00",
+          "2023-02-01 04:00:00"
+        ]
+      },
+      "numeric_feat": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 96,
+        "row_count": 100,
+        "sample_values": [
+          "2.548",
+          "2.334",
+          "3.434",
+          "3.252",
+          "1.595"
+        ]
+      }
+    }
+  },
+  "comparison": {
+    "train_only_columns": [
+      "target",
+      "target_component_1",
+      "target_component_2"
+    ],
+    "predict_only_columns": [],
+    "common_columns": [
+      "numeric_feat",
+      "timestamp"
+    ],
+    "dtype_mismatches": {},
+    "row_count_train": 500,
+    "row_count_predict": 100
+  }
+}

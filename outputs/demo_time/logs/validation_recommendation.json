@@ -1,0 +1,25 @@
+{
+  "detected_split_pattern": "time_based_split",
+  "evidence": [
+    "date: predict starts after train ends \u2192 time-based split"
+  ],
+  "why_generic_validation_is_risky": "Random k-fold or stratified k-fold will train on future data and validate on past data, producing optimistic scores that will not hold in production.",
+  "recommendation": {
+    "strategy": "time_holdout",
+    "confidence": "high",
+    "reason": "Prediction data comes strictly after training data \u2014 temporal ordering must be respected.",
+    "fit_rule": "Train on all data up to a cutoff date.",
+    "validation_rule": "Validate on data after the cutoff (simulating the prediction window).",
+    "strategies_to_avoid": [
+      "kfold",
+      "random_holdout",
+      "stratified_kfold"
+    ]
+  },
+  "alternatives": [
+    {
+      "strategy": "rolling_split",
+      "reason": "Rolling window validation can better capture temporal model decay."
+    }
+  ]
+}

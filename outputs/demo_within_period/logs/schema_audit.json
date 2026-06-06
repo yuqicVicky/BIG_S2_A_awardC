@@ -1,0 +1,172 @@
+{
+  "train": {
+    "split": "train",
+    "row_count": 855,
+    "col_count": 6,
+    "columns": {
+      "timestamp": {
+        "dtype": "datetime64[ns]",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 57,
+        "row_count": 855,
+        "sample_values": [
+          "2023-01-01 00:00:00",
+          "2023-01-02 00:00:00",
+          "2023-01-03 00:00:00",
+          "2023-01-04 00:00:00",
+          "2023-01-05 00:00:00"
+        ]
+      },
+      "entity_id": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 15,
+        "row_count": 855,
+        "sample_values": [
+          "ENT_00",
+          "ENT_00",
+          "ENT_00",
+          "ENT_00",
+          "ENT_00"
+        ]
+      },
+      "numeric_feat": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 750,
+        "row_count": 855,
+        "sample_values": [
+          "3.96",
+          "3.049",
+          "5.128",
+          "4.147",
+          "5.778"
+        ]
+      },
+      "category": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 3,
+        "row_count": 855,
+        "sample_values": [
+          "Q",
+          "R",
+          "R",
+          "R",
+          "R"
+        ]
+      },
+      "target": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 745,
+        "row_count": 855,
+        "sample_values": [
+          "58.52",
+          "55.02",
+          "63.05",
+          "63.95",
+          "65.27"
+        ]
+      },
+      "demand_so_far": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 850,
+        "row_count": 855,
+        "sample_values": [
+          "58.52",
+          "113.54",
+          "176.59",
+          "240.54",
+          "305.81"
+        ]
+      }
+    }
+  },
+  "predict": {
+    "split": "predict",
+    "row_count": 495,
+    "col_count": 4,
+    "columns": {
+      "timestamp": {
+        "dtype": "datetime64[ns]",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 33,
+        "row_count": 495,
+        "sample_values": [
+          "2023-01-20 00:00:00",
+          "2023-01-21 00:00:00",
+          "2023-01-22 00:00:00",
+          "2023-01-23 00:00:00",
+          "2023-01-24 00:00:00"
+        ]
+      },
+      "entity_id": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 15,
+        "row_count": 495,
+        "sample_values": [
+          "ENT_00",
+          "ENT_00",
+          "ENT_00",
+          "ENT_00",
+          "ENT_00"
+        ]
+      },
+      "numeric_feat": {
+        "dtype": "float64",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 456,
+        "row_count": 495,
+        "sample_values": [
+          "5.068",
+          "5.631",
+          "4.53",
+          "4.725",
+          "5.968"
+        ]
+      },
+      "category": {
+        "dtype": "object",
+        "null_count": 0,
+        "null_rate": 0.0,
+        "unique_count": 3,
+        "row_count": 495,
+        "sample_values": [
+          "P",
+          "Q",
+          "R",
+          "P",
+          "P"
+        ]
+      }
+    }
+  },
+  "comparison": {
+    "train_only_columns": [
+      "demand_so_far",
+      "target"
+    ],
+    "predict_only_columns": [],
+    "common_columns": [
+      "category",
+      "entity_id",
+      "numeric_feat",
+      "timestamp"
+    ],
+    "dtype_mismatches": {},
+    "row_count_train": 855,
+    "row_count_predict": 495
+  }
+}

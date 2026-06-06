@@ -1,4 +1,4 @@
-"""Tests that visualization figures are generated and are valid PNG files."""
+"""Tests that visualization figures and JSON logs are generated correctly."""
 
 import sys, os, tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -26,35 +26,20 @@ def _minimal_within_period():
 def test_figures_generated():
     train, predict = _minimal_within_period()
     with tempfile.TemporaryDirectory() as tmpdir:
-        auditor = PatternAuditor(
-            train, predict,
-            target_col="target",
-            datetime_col="timestamp",
-        )
-        auditor.run(output_dir=tmpdir)
-        fig_dir = os.path.join(tmpdir, "figures")
-        files = os.listdir(fig_dir)
-        assert len(files) >= 5, f"Expected >=5 figures, got {files}"
+        PatternAuditor(train, predict, target_col="target", datetime_col="timestamp").run(output_dir=tmpdir)
+        files = os.listdir(os.path.join(tmpdir, "figures"))
+        assert len(files) >= 3, f"Expected >=3 figures, got {files}"
 
 
 def test_required_figures_present():
     train, predict = _minimal_within_period()
     with tempfile.TemporaryDirectory() as tmpdir:
-        auditor = PatternAuditor(
-            train, predict,
-            target_col="target",
-            datetime_col="timestamp",
-        )
-        auditor.run(output_dir=tmpdir)
-        fig_dir = os.path.join(tmpdir, "figures")
-        files = set(os.listdir(fig_dir))
+        PatternAuditor(train, predict, target_col="target", datetime_col="timestamp").run(output_dir=tmpdir)
+        files = set(os.listdir(os.path.join(tmpdir, "figures")))
         required = {
             "train_prediction_coverage.png",
-            "target_distribution.png",
-            "feature_target_signal.png",
-            "train_prediction_shift.png",
-            "leakage_feature_availability.png",
-            "target_by_time_pattern.png",
+            "feature_availability.png",
+            "distribution_shift_summary.png",
         }
         missing = required - files
         assert not missing, f"Missing figures: {missing}"
@@ -63,103 +48,51 @@ def test_required_figures_present():
 def test_figures_are_nonempty_png():
     train, predict = _minimal_within_period()
     with tempfile.TemporaryDirectory() as tmpdir:
-        auditor = PatternAuditor(
-            train, predict,
-            target_col="target",
-            datetime_col="timestamp",
-        )
-        auditor.run(output_dir=tmpdir)
+        PatternAuditor(train, predict, target_col="target", datetime_col="timestamp").run(output_dir=tmpdir)
         fig_dir = os.path.join(tmpdir, "figures")
         for fname in os.listdir(fig_dir):
             path = os.path.join(fig_dir, fname)
             assert os.path.getsize(path) > 1000, f"{fname} is suspiciously small"
             with open(path, "rb") as f:
                 header = f.read(8)
-            # PNG magic bytes
             assert header[:4] == b"\x89PNG", f"{fname} is not a valid PNG"
-
-
-def test_hour_dayofweek_heatmap_generated_with_hourly_data():
-    train, predict = _minimal_within_period()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        auditor = PatternAuditor(
-            train, predict,
-            target_col="target",
-            datetime_col="timestamp",
-        )
-        auditor.run(output_dir=tmpdir)
-        fig_dir = os.path.join(tmpdir, "figures")
-        assert "hour_by_dayofweek_heatmap.png" in os.listdir(fig_dir)
 
 
 def test_json_logs_written():
     train, predict = _minimal_within_period()
     with tempfile.TemporaryDirectory() as tmpdir:
-        auditor = PatternAuditor(
-            train, predict,
-            target_col="target",
-            datetime_col="timestamp",
-        )
-        auditor.run(output_dir=tmpdir)
+        PatternAuditor(train, predict, target_col="target", datetime_col="timestamp").run(output_dir=tmpdir)
         logs_dir = os.path.join(tmpdir, "logs")
         expected = [
-            "schema_report.json",
-            "feature_type_report.json",
+            "schema_audit.json",
+            "feature_availability_audit.json",
             "train_prediction_pattern.json",
-            "target_pattern_report.json",
-            "distribution_shift_report.json",
-            "leakage_feature_audit.json",
+            "leakage_audit.json",
             "validation_recommendation.json",
-            "feature_recommendation.json",
         ]
         for fname in expected:
             assert fname in os.listdir(logs_dir), f"Missing log: {fname}"
 
 
-def test_hour_workingday_heatmap_generated_with_hourly_data():
-    train, predict = _minimal_within_period()
-    with tempfile.TemporaryDirectory() as tmpdir:
-        auditor = PatternAuditor(
-            train, predict,
-            target_col="target",
-            datetime_col="timestamp",
-        )
-        auditor.run(output_dir=tmpdir)
-        fig_dir = os.path.join(tmpdir, "figures")
-        assert "hour_by_workingday_heatmap.png" in os.listdir(fig_dir)
-
-
 def test_markdown_report_written():
     train, predict = _minimal_within_period()
     with tempfile.TemporaryDirectory() as tmpdir:
-        auditor = PatternAuditor(
-            train, predict,
-            target_col="target",
-            datetime_col="timestamp",
-        )
-        auditor.run(output_dir=tmpdir)
+        PatternAuditor(train, predict, target_col="target", datetime_col="timestamp").run(output_dir=tmpdir)
         report_path = os.path.join(tmpdir, "reports", "pattern_audit.md")
         assert os.path.exists(report_path)
         with open(report_path) as f:
             content = f.read()
-        assert "Validation Recommendation" in content or "Recommended Validation" in content
         assert "Leakage" in content
+        assert "Validation" in content
 
 
 def test_markdown_narrative_tells_story():
-    """pattern_audit.md must contain the narrative sections."""
     train, predict = _minimal_within_period()
     with tempfile.TemporaryDirectory() as tmpdir:
-        auditor = PatternAuditor(
-            train, predict,
-            target_col="target",
-            datetime_col="timestamp",
-        )
-        auditor.run(output_dir=tmpdir)
-        report_path = os.path.join(tmpdir, "reports", "pattern_audit.md")
-        with open(report_path) as f:
+        PatternAuditor(train, predict, target_col="target", datetime_col="timestamp").run(output_dir=tmpdir)
+        with open(os.path.join(tmpdir, "reports", "pattern_audit.md")) as f:
             content = f.read()
-        assert "Detected Data Pattern" in content
-        assert "Why Generic Validation Is Risky" in content
+        assert "Train/Prediction Pattern" in content
+        assert "Generic Validation Is Risky" in content
         assert "Recommended Validation Strategy" in content
-        assert "Feature Recommendations" in content
+        assert "Feature Availability" in content

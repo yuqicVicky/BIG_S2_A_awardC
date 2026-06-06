@@ -1,0 +1,39 @@
+{
+  "columns": {
+    "date": {
+      "available_at_prediction": true,
+      "inferred_type": "datetime_like",
+      "leakage_risk": "none",
+      "leakage_type": null,
+      "action": "use"
+    },
+    "numeric_feat": {
+      "available_at_prediction": true,
+      "inferred_type": "numeric_continuous",
+      "leakage_risk": "none",
+      "leakage_type": null,
+      "action": "use"
+    },
+    "category": {
+      "available_at_prediction": true,
+      "inferred_type": "categorical_low_cardinality",
+      "leakage_risk": "none",
+      "leakage_type": null,
+      "action": "use"
+    }
+  },
+  "summary": {
+    "total_train_columns": 4,
+    "available_at_prediction": 3,
+    "train_only": 0,
+    "predict_only": 0,
+    "high_leakage_risk": 0
+  },
+  "columns_to_use": [
+    "date",
+    "numeric_feat",
+    "category"
+  ],
+  "columns_to_exclude": [],
+  "columns_to_verify": []
+}
