@@ -1,0 +1,22 @@
+{
+  "structural_pairs": [
+    {
+      "categorical_col": "facility_type",
+      "numeric_col": "facility_capacity",
+      "pattern": "numeric_near_zero_when_cat_na",
+      "na_fraction_when_cat_na": 0.0,
+      "zero_fraction_when_cat_na": 1.0
+    }
+  ],
+  "column_flags": {
+    "facility_type": {
+      "is_structural": true,
+      "pattern": "structural_absence"
+    },
+    "facility_capacity": {
+      "is_structural": true,
+      "pattern": "structural_absence"
+    }
+  },
+  "n_structural_pairs": 1
+}

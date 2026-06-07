@@ -1,0 +1,17 @@
+{
+  "columns": {
+    "facility_type": {
+      "mechanism_label": "MNAR/structural concern",
+      "mechanism_evidence": "missingness_correlated_with_target",
+      "correlated_features": [
+        {
+          "feature": "facility_capacity",
+          "correlation": 0.8113
+        }
+      ],
+      "target_correlation": 0.1009,
+      "target_signal": true
+    }
+  },
+  "note": "Mechanism labels are statistical clues from observational data only. They do not imply a causal missingness mechanism."
+}

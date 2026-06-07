@@ -1,0 +1,54 @@
+{
+  "columns": {
+    "facility_type": {
+      "n_total": 200,
+      "n_missing": 80,
+      "missing_rate": 0.4,
+      "severity": "moderate",
+      "dtype": "object",
+      "dtype_category": "categorical",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "facility_capacity": {
+      "n_total": 200,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "int64",
+      "dtype_category": "numeric",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "property_size_sqft": {
+      "n_total": 200,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "target": {
+      "n_total": 200,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": true,
+      "predict_missing_rate": null
+    }
+  },
+  "summary": {
+    "total_rows": 200,
+    "total_columns": 4,
+    "columns_with_any_missing": 1,
+    "total_missing_cells": 80,
+    "overall_missing_rate": 0.1
+  },
+  "columns_with_missing": [
+    "facility_type"
+  ]
+}

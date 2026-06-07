@@ -1,0 +1,33 @@
+{
+  "columns": {
+    "credit_score": {
+      "strategy": "numeric_median_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "mechanism='MNAR/structural concern'_or_moderate_missing_rate",
+      "fit_on": "train_only"
+    },
+    "account_age_years": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A"
+    },
+    "target": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "target_column_excluded_from_imputation",
+      "fit_on": "N/A"
+    }
+  },
+  "summary": {
+    "strategy_counts": {
+      "numeric_median_plus_indicator": 1,
+      "no_imputation_needed": 2
+    },
+    "columns_needing_missing_indicator": [
+      "credit_score"
+    ],
+    "n_columns_to_impute": 1
+  },
+  "leakage_protocol": "All imputation statistics (median, mode, model parameters) must be fitted on training data only and applied to prediction data."
+}

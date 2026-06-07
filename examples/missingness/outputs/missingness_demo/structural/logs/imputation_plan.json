@@ -1,0 +1,39 @@
+{
+  "columns": {
+    "facility_type": {
+      "strategy": "structural_none_or_zero",
+      "add_missing_indicator": true,
+      "reason": "structural_absence_pattern_detected",
+      "fit_on": "train_only"
+    },
+    "facility_capacity": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A"
+    },
+    "property_size_sqft": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A"
+    },
+    "target": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "target_column_excluded_from_imputation",
+      "fit_on": "N/A"
+    }
+  },
+  "summary": {
+    "strategy_counts": {
+      "structural_none_or_zero": 1,
+      "no_imputation_needed": 3
+    },
+    "columns_needing_missing_indicator": [
+      "facility_type"
+    ],
+    "n_columns_to_impute": 1
+  },
+  "leakage_protocol": "All imputation statistics (median, mode, model parameters) must be fitted on training data only and applied to prediction data."
+}

@@ -1,0 +1,54 @@
+{
+  "columns": {
+    "measurement_a": {
+      "n_total": 800,
+      "n_missing": 54,
+      "missing_rate": 0.0675,
+      "severity": "low",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "measurement_b": {
+      "n_total": 800,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "measurement_c": {
+      "n_total": 800,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "target": {
+      "n_total": 800,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": true,
+      "predict_missing_rate": null
+    }
+  },
+  "summary": {
+    "total_rows": 800,
+    "total_columns": 4,
+    "columns_with_any_missing": 1,
+    "total_missing_cells": 54,
+    "overall_missing_rate": 0.0169
+  },
+  "columns_with_missing": [
+    "measurement_a"
+  ]
+}

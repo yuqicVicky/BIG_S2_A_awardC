@@ -1,98 +1,68 @@
-"""Verify that src/ and .claude/skills/ contain no demo-specific hardcoding.
+"""Verify src/missingness_auditor/ contains no dataset-specific hardcoded names."""
 
-Forbidden terms may appear in examples/, tests/, or README — never in src/ or the
-skill definition files.  This test prevents accidental coupling to any specific
-dataset or domain.
-"""
-
+import glob
 import os
-import re
-import pytest
+import sys
+import numpy as np
+import pandas as pd
 
-_REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
-SRC_DIR = os.path.join(_REPO_ROOT, "src", "pattern_auditor")
-SKILLS_DIR = os.path.join(_REPO_ROOT, ".claude", "skills")
+_SRC = os.path.join(os.path.dirname(__file__), "..", "src", "missingness_auditor")
 
-# Terms forbidden in src/ and .claude/skills/ core logic.
-# Examples, tests, and README are explicitly exempted.
-FORBIDDEN_TERMS = [
-    r"\bbike\b",
-    r"\bcasual\b",
-    r"\bregistered\b",
-    r"\bcnt\b",
-    r"\brentals?\b",
-    r"\bweathersit\b",
-    r"\bSalePrice\b",
-    r"\bHousePrice\b",
-    r"\bhouse_?price\b",
-    r"\bmedian_house\b",
-    r"\boverdose\b",
-    r"\bfentanyl\b",
-    r"\bAmes\b",
-    r"\btitanic\b",
-    r"\bpassenger\b",
-    r"\bsurvived?\b",
-    r"\biris\b",
-    r"\bspecies\b",
-    r"\bsetosa\b",
-    r"\bversicolor\b",
-    r"\bvirginica\b",
-    r"\btarget_component_1\b",
-    r"\btarget_component_2\b",
+FORBIDDEN = [
+    "SalePrice", "LotArea", "GrLivArea", "MSZoning", "HousePrice",
+    "house_price", "titanic", "Titanic", "LotFrontage", "GarageCars",
+    "PoolArea", "Neighborhood", "BldgType", "PassengerId",
 ]
 
 
-def _iter_py_files(directory: str):
-    for root, _, files in os.walk(directory):
-        for fname in files:
-            if fname.endswith(".py") or fname.endswith(".md"):
-                yield os.path.join(root, fname)
+def _src_files():
+    return glob.glob(os.path.join(_SRC, "*.py"))
 
 
-def test_no_domain_terms_in_src():
-    violations = []
-    for path in _iter_py_files(SRC_DIR):
-        with open(path, encoding="utf-8") as f:
-            content = f.read()
-        for pattern in FORBIDDEN_TERMS:
-            for m in re.finditer(pattern, content, re.IGNORECASE):
-                line_no = content[: m.start()].count("\n") + 1
-                violations.append(
-                    f"{os.path.relpath(path)}: line {line_no}: "
-                    f"'{m.group()}' (pattern: {pattern})"
-                )
-    if violations:
-        pytest.fail("Dataset-specific hardcoding found in src/:\n" + "\n".join(violations))
+def test_no_competition_column_names():
+    for path in _src_files():
+        content = open(path).read()
+        for name in FORBIDDEN:
+            assert name not in content, (
+                f"Forbidden name {name!r} found in {os.path.basename(path)}"
+            )
 
 
-def test_no_domain_terms_in_skills():
-    if not os.path.isdir(SKILLS_DIR):
-        pytest.skip("No .claude/skills/ directory found")
-    violations = []
-    for path in _iter_py_files(SKILLS_DIR):
-        with open(path, encoding="utf-8") as f:
-            content = f.read()
-        for pattern in FORBIDDEN_TERMS:
-            for m in re.finditer(pattern, content, re.IGNORECASE):
-                line_no = content[: m.start()].count("\n") + 1
-                violations.append(
-                    f"{os.path.relpath(path)}: line {line_no}: "
-                    f"'{m.group()}' (pattern: {pattern})"
-                )
-    if violations:
-        pytest.fail("Domain-specific terms found in .claude/skills/:\n" + "\n".join(violations))
+def test_src_files_present():
+    expected = ["auditor.py", "profiler.py", "mechanism.py", "structural.py",
+                "planner.py", "imputer.py", "visualization.py", "reporting.py", "cli.py"]
+    found = {os.path.basename(p) for p in _src_files()}
+    for f in expected:
+        assert f in found, f"Missing source file: {f}"
 
 
-def test_src_files_exist():
-    files = list(_iter_py_files(SRC_DIR))
-    assert len(files) >= 5, f"Expected ≥5 source files; found {len(files)}"
+def test_strategies_are_generic():
+    path = os.path.join(_SRC, "planner.py")
+    content = open(path).read()
+    for name in FORBIDDEN:
+        assert name not in content
 
 
-def test_generic_column_names_used_in_src():
-    generic = ["numeric_continuous", "categorical", "datetime_like", "target_col"]
-    src_content = ""
-    for path in _iter_py_files(SRC_DIR):
-        with open(path, encoding="utf-8") as f:
-            src_content += f.read()
-    for term in generic:
-        assert term in src_content, f"Generic term '{term}' not found in src/ — is the code dataset-agnostic?"
+def test_imputer_no_hardcoding():
+    path = os.path.join(_SRC, "imputer.py")
+    content = open(path).read()
+    for name in FORBIDDEN:
+        assert name not in content
+
+
+def test_auditor_accepts_arbitrary_columns(tmp_path):
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+    from missingness_auditor import MissingnessAuditor
+
+    rng = np.random.default_rng(99)
+    df = pd.DataFrame({
+        "zebra_metric": np.where(rng.random(60) < 0.20, np.nan, rng.normal(0, 1, 60)),
+        "alpha_code":   np.where(rng.random(60) < 0.10, None, rng.choice(["p", "q"], 60)),
+        "outcome_flag": rng.binomial(1, 0.4, 60).astype(float),
+    })
+    out = str(tmp_path / "out") + "/"
+    results = MissingnessAuditor(df, target_col="outcome_flag").run()
+    MissingnessAuditor(df, target_col="outcome_flag").save_outputs(results, out)
+    assert "missingness_profile" in results
+    assert "imputation_plan" in results
+    assert os.path.exists(os.path.join(out, "logs/imputation_plan.json"))

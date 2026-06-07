@@ -1,0 +1,17 @@
+{
+  "columns": {
+    "income": {
+      "mechanism_label": "MAR-like evidence",
+      "mechanism_evidence": "missingness_correlated_with_observed_features",
+      "correlated_features": [
+        {
+          "feature": "education_level",
+          "correlation": 0.8662
+        }
+      ],
+      "target_correlation": 0.0142,
+      "target_signal": false
+    }
+  },
+  "note": "Mechanism labels are statistical clues from observational data only. They do not imply a causal missingness mechanism."
+}

@@ -1,149 +1,121 @@
-"""CLI integration tests — run each demo case through the CLI and verify all 9 outputs."""
+"""CLI produces all required output files for missingness_auditor."""
 
-import sys, os, tempfile, subprocess, json
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import json
+import os
+import subprocess
+import sys
 
+import numpy as np
+import pandas as pd
 import pytest
 
-_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-_PYTHON = sys.executable
+_SRC = os.path.join(os.path.dirname(__file__), "..", "src")
+_ENV = {**os.environ, "PYTHONPATH": _SRC + os.pathsep + os.environ.get("PYTHONPATH", "")}
 
-REQUIRED_OUTPUTS = [
-    "logs/schema_audit.json",
-    "logs/feature_availability_audit.json",
-    "logs/train_prediction_pattern.json",
-    "logs/leakage_audit.json",
-    "logs/validation_recommendation.json",
-    "reports/pattern_audit.md",
-    "figures/train_prediction_coverage.png",
-    "figures/feature_availability.png",
-    "figures/distribution_shift_summary.png",
+REQUIRED_FILES = [
+    "logs/missingness_profile.json",
+    "logs/missingness_mechanism_audit.json",
+    "logs/structural_missingness_audit.json",
+    "logs/imputation_plan.json",
+    "logs/leakage_safe_imputation_check.json",
+    "reports/missing_data_report.md",
+    "figures/missingness_bar.png",
+    "figures/missingness_matrix.png",
+    "figures/missingness_target_signal.png",
 ]
 
 
-def _run_cli(data_dir: str, out_dir: str, extra_args: list[str]) -> subprocess.CompletedProcess:
-    cmd = [
-        _PYTHON, "-m", "pattern_auditor.cli",
-        "--train", os.path.join(data_dir, "train.csv"),
-        "--predict", os.path.join(data_dir, "predict.csv"),
-        "--out", out_dir + "/",
-    ] + extra_args
-    env = os.environ.copy()
-    src_path = os.path.join(_REPO_ROOT, "src")
-    env["PYTHONPATH"] = src_path + os.pathsep + env.get("PYTHONPATH", "")
-    return subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        cwd=_REPO_ROOT,
-        env=env,
+@pytest.fixture
+def csv_path(tmp_path):
+    rng = np.random.default_rng(0)
+    n = 60
+    df = pd.DataFrame({
+        "num_a":  np.where(rng.random(n) < 0.20, np.nan, rng.normal(0, 1, n)),
+        "cat_a":  np.where(rng.random(n) < 0.20, None, rng.choice(["x", "y"], n)),
+        "target": rng.normal(0, 1, n),
+    })
+    p = str(tmp_path / "data.csv")
+    df.to_csv(p, index=False)
+    return p
+
+
+def test_cli_data_mode(csv_path, tmp_path):
+    out = str(tmp_path / "out") + "/"
+    result = subprocess.run(
+        [sys.executable, "-m", "missingness_auditor.cli",
+         "--data", csv_path, "--target", "target", "--out", out],
+        capture_output=True, text=True, env=_ENV,
     )
+    assert result.returncode == 0, result.stderr
+    for f in REQUIRED_FILES:
+        assert os.path.exists(os.path.join(out, f)), f"Missing output: {f}"
 
 
-def _assert_outputs(out_dir: str, case_name: str):
-    for rel in REQUIRED_OUTPUTS:
-        path = os.path.join(out_dir, rel)
-        assert os.path.exists(path), f"[{case_name}] Missing output: {rel}"
-        assert os.path.getsize(path) > 20, f"[{case_name}] Empty output: {rel}"
+def test_cli_train_predict_mode(tmp_path):
+    rng = np.random.default_rng(1)
+    n = 40
+    df = pd.DataFrame({
+        "feat":   np.where(rng.random(n) < 0.15, np.nan, rng.normal(0, 1, n)),
+        "target": rng.normal(0, 1, n),
+    })
+    train_p = str(tmp_path / "train.csv")
+    pred_p  = str(tmp_path / "pred.csv")
+    df.to_csv(train_p, index=False)
+    df.drop(columns=["target"]).to_csv(pred_p, index=False)
+
+    out = str(tmp_path / "out") + "/"
+    result = subprocess.run(
+        [sys.executable, "-m", "missingness_auditor.cli",
+         "--train", train_p, "--predict", pred_p,
+         "--target", "target", "--out", out],
+        capture_output=True, text=True, env=_ENV,
+    )
+    assert result.returncode == 0, result.stderr
+    for f in REQUIRED_FILES:
+        assert os.path.exists(os.path.join(out, f)), f"Missing output: {f}"
 
 
-# ── Case A: within_period ──────────────────────────────────────────────────
-
-def test_cli_within_period():
-    from examples.make_within_period_demo import write_data
-    with tempfile.TemporaryDirectory() as data_dir, tempfile.TemporaryDirectory() as out_dir:
-        write_data(data_dir)
-        result = _run_cli(data_dir, out_dir,
-                          ["--target", "target", "--datetime", "timestamp", "--group", "entity_id"])
-        assert result.returncode == 0, f"CLI failed:\n{result.stderr}"
-        _assert_outputs(out_dir, "within_period")
-
-        with open(os.path.join(out_dir, "logs", "validation_recommendation.json")) as f:
-            val = json.load(f)
-        assert val["recommendation"]["strategy"] == "within_period_latest_available_holdout"
-
-
-# ── Case B: iid ────────────────────────────────────────────────────────────
-
-def test_cli_iid():
-    from examples.make_iid_demo import write_data
-    with tempfile.TemporaryDirectory() as data_dir, tempfile.TemporaryDirectory() as out_dir:
-        write_data(data_dir)
-        result = _run_cli(data_dir, out_dir, ["--target", "target"])
-        assert result.returncode == 0, f"CLI failed:\n{result.stderr}"
-        _assert_outputs(out_dir, "iid")
-
-        with open(os.path.join(out_dir, "logs", "validation_recommendation.json")) as f:
-            val = json.load(f)
-        assert val["recommendation"]["strategy"] in ("kfold", "stratified_kfold")
+def test_cli_json_summary_valid(csv_path, tmp_path):
+    out = str(tmp_path / "out") + "/"
+    result = subprocess.run(
+        [sys.executable, "-m", "missingness_auditor.cli",
+         "--data", csv_path, "--target", "target",
+         "--out", out, "--json-summary"],
+        capture_output=True, text=True, env=_ENV,
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.strip().split("\n")
+    start = next((i for i, l in enumerate(lines) if l.strip().startswith("{")), None)
+    assert start is not None
+    parsed = json.loads("\n".join(lines[start:]))
+    assert "columns" in parsed
 
 
-# ── Case C: group ──────────────────────────────────────────────────────────
-
-def test_cli_group():
-    from examples.make_group_demo import write_data
-    with tempfile.TemporaryDirectory() as data_dir, tempfile.TemporaryDirectory() as out_dir:
-        write_data(data_dir)
-        result = _run_cli(data_dir, out_dir,
-                          ["--target", "target", "--group", "store_id"])
-        assert result.returncode == 0, f"CLI failed:\n{result.stderr}"
-        _assert_outputs(out_dir, "group")
-
-        with open(os.path.join(out_dir, "logs", "validation_recommendation.json")) as f:
-            val = json.load(f)
-        assert val["recommendation"]["strategy"] == "group_split"
+def test_cli_no_target_runs_ok(tmp_path):
+    rng = np.random.default_rng(2)
+    df = pd.DataFrame({"a": np.where(rng.random(30) < 0.2, np.nan, rng.normal(0, 1, 30))})
+    p   = str(tmp_path / "d.csv")
+    out = str(tmp_path / "out") + "/"
+    df.to_csv(p, index=False)
+    result = subprocess.run(
+        [sys.executable, "-m", "missingness_auditor.cli", "--data", p, "--out", out],
+        capture_output=True, text=True, env=_ENV,
+    )
+    assert result.returncode == 0, result.stderr
 
 
-# ── Case D: future_time_split ──────────────────────────────────────────────
-
-def test_cli_future_time_split():
-    from examples.make_time_split_demo import write_data
-    with tempfile.TemporaryDirectory() as data_dir, tempfile.TemporaryDirectory() as out_dir:
-        write_data(data_dir)
-        result = _run_cli(data_dir, out_dir,
-                          ["--target", "target", "--datetime", "date"])
-        assert result.returncode == 0, f"CLI failed:\n{result.stderr}"
-        _assert_outputs(out_dir, "future_time_split")
-
-        with open(os.path.join(out_dir, "logs", "validation_recommendation.json")) as f:
-            val = json.load(f)
-        assert val["recommendation"]["strategy"] == "time_holdout"
-
-
-# ── Case E: leakage ────────────────────────────────────────────────────────
-
-def test_cli_leakage():
-    from examples.make_leakage_demo import write_data
-    with tempfile.TemporaryDirectory() as data_dir, tempfile.TemporaryDirectory() as out_dir:
-        write_data(data_dir)
-        result = _run_cli(data_dir, out_dir,
-                          ["--target", "target", "--datetime", "timestamp"])
-        assert result.returncode == 0, f"CLI failed:\n{result.stderr}"
-        _assert_outputs(out_dir, "leakage")
-
-        with open(os.path.join(out_dir, "logs", "feature_availability_audit.json")) as f:
-            fa = json.load(f)
-        excluded = fa["columns_to_exclude"]
-        assert "target_component_1" in excluded
-        assert "target_component_2" in excluded
-
-
-# ── JSON outputs are valid JSON ────────────────────────────────────────────
-
-def test_all_json_outputs_valid():
-    from examples.make_iid_demo import write_data
-    with tempfile.TemporaryDirectory() as data_dir, tempfile.TemporaryDirectory() as out_dir:
-        write_data(data_dir)
-        _run_cli(data_dir, out_dir, ["--target", "target"])
-        for log_name in [
-            "schema_audit.json",
-            "feature_availability_audit.json",
-            "train_prediction_pattern.json",
-            "leakage_audit.json",
-            "validation_recommendation.json",
-        ]:
-            path = os.path.join(out_dir, "logs", log_name)
-            with open(path) as f:
-                data = json.load(f)
-            assert isinstance(data, dict), f"{log_name} should be a JSON object"
+def test_imputation_plan_json_structure(csv_path, tmp_path):
+    out = str(tmp_path / "out") + "/"
+    subprocess.run(
+        [sys.executable, "-m", "missingness_auditor.cli",
+         "--data", csv_path, "--target", "target", "--out", out],
+        env=_ENV, capture_output=True,
+    )
+    with open(os.path.join(out, "logs/imputation_plan.json")) as f:
+        plan = json.load(f)
+    assert "columns" in plan
+    assert "summary" in plan
+    for col, entry in plan["columns"].items():
+        assert "strategy" in entry
+        assert "add_missing_indicator" in entry
+        assert "fit_on" in entry

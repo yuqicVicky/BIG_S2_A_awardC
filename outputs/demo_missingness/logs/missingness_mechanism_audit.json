@@ -1,0 +1,43 @@
+{
+  "columns": {
+    "age": {
+      "mechanism_label": "MCAR-compatible",
+      "mechanism_evidence": "no_significant_correlation_found",
+      "correlated_features": [],
+      "target_correlation": 0.068,
+      "target_signal": false
+    },
+    "income": {
+      "mechanism_label": "MAR-like evidence",
+      "mechanism_evidence": "missingness_correlated_with_observed_features",
+      "correlated_features": [
+        {
+          "feature": "education_level",
+          "correlation": 0.8721
+        }
+      ],
+      "target_correlation": 0.0742,
+      "target_signal": false
+    },
+    "risk_score": {
+      "mechanism_label": "MNAR/structural concern",
+      "mechanism_evidence": "missingness_correlated_with_target",
+      "correlated_features": [],
+      "target_correlation": 1.0,
+      "target_signal": true
+    },
+    "facility_quality": {
+      "mechanism_label": "MAR-like evidence",
+      "mechanism_evidence": "missingness_correlated_with_observed_features",
+      "correlated_features": [
+        {
+          "feature": "facility_area",
+          "correlation": 0.6551
+        }
+      ],
+      "target_correlation": 0.0118,
+      "target_signal": false
+    }
+  },
+  "note": "Mechanism labels are statistical clues from observational data only. They do not imply a causal missingness mechanism."
+}

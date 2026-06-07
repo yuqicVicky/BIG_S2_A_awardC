@@ -1,0 +1,44 @@
+{
+  "columns": {
+    "credit_score": {
+      "n_total": 800,
+      "n_missing": 241,
+      "missing_rate": 0.3013,
+      "severity": "moderate",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "account_age_years": {
+      "n_total": 800,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "target": {
+      "n_total": 800,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": true,
+      "predict_missing_rate": null
+    }
+  },
+  "summary": {
+    "total_rows": 800,
+    "total_columns": 3,
+    "columns_with_any_missing": 1,
+    "total_missing_cells": 241,
+    "overall_missing_rate": 0.1004
+  },
+  "columns_with_missing": [
+    "credit_score"
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "columns": {
+    "education_level": {
+      "n_total": 800,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "income": {
+      "n_total": 800,
+      "n_missing": 255,
+      "missing_rate": 0.3187,
+      "severity": "moderate",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "years_experience": {
+      "n_total": 800,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "target": {
+      "n_total": 800,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "is_target": true,
+      "predict_missing_rate": null
+    }
+  },
+  "summary": {
+    "total_rows": 800,
+    "total_columns": 4,
+    "columns_with_any_missing": 1,
+    "total_missing_cells": 255,
+    "overall_missing_rate": 0.0797
+  },
+  "columns_with_missing": [
+    "income"
+  ]
+}

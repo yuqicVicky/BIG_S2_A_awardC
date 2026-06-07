@@ -1,0 +1,71 @@
+{
+  "findings": [
+    {
+      "column": "age",
+      "strategy": "numeric_median",
+      "leakage_risk": "low",
+      "leakage_note": "statistics_fitted_on_train_only",
+      "recommendation": "fit_statistic_on_train_apply_to_predict"
+    },
+    {
+      "column": "income",
+      "strategy": "numeric_median_plus_indicator",
+      "leakage_risk": "low",
+      "leakage_note": "statistics_fitted_on_train_only",
+      "recommendation": "fit_statistic_on_train_apply_to_predict"
+    },
+    {
+      "column": "education_level",
+      "strategy": "no_imputation_needed",
+      "leakage_risk": "none",
+      "leakage_note": "no_imputation_required",
+      "recommendation": "no_action"
+    },
+    {
+      "column": "risk_score",
+      "strategy": "numeric_median_plus_indicator",
+      "leakage_risk": "low",
+      "leakage_note": "statistics_fitted_on_train_only",
+      "recommendation": "fit_statistic_on_train_apply_to_predict"
+    },
+    {
+      "column": "facility_area",
+      "strategy": "no_imputation_needed",
+      "leakage_risk": "none",
+      "leakage_note": "no_imputation_required",
+      "recommendation": "no_action"
+    },
+    {
+      "column": "facility_quality",
+      "strategy": "structural_none_or_zero",
+      "leakage_risk": "low",
+      "leakage_note": "statistics_fitted_on_train_only",
+      "recommendation": "fit_statistic_on_train_apply_to_predict"
+    },
+    {
+      "column": "other_score",
+      "strategy": "no_imputation_needed",
+      "leakage_risk": "none",
+      "leakage_note": "no_imputation_required",
+      "recommendation": "no_action"
+    },
+    {
+      "column": "target",
+      "strategy": "no_imputation_needed",
+      "leakage_risk": "none",
+      "leakage_note": "no_imputation_required",
+      "recommendation": "no_action"
+    }
+  ],
+  "summary": {
+    "total_columns_checked": 8,
+    "high_leakage_risk": 0,
+    "medium_leakage_risk": 0,
+    "low_or_none_leakage_risk": 8
+  },
+  "global_protocol": {
+    "rule": "Fit all imputation statistics on training data only. Never use prediction/test data to compute medians, modes, or model imputation parameters.",
+    "sklearn_pattern": "use Pipeline([('imputer', SimpleImputer()), ('model', ...)]); pipeline.fit(X_train, y_train)",
+    "indicator_pattern": "use MissingIndicator(features='missing-only') before imputation in pipeline"
+  }
+}
