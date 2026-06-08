@@ -71,8 +71,11 @@ def test_structural_recommends_none_or_zero():
         if flagged[col]["is_structural"]:
             miss_rate = profile["columns"][col]["missing_rate"]
             if miss_rate > 0:
-                # columns with actual NaN + structural flag → structural_none_or_zero
-                assert plan["columns"][col]["strategy"] == "structural_none_or_zero"
+                strategy = plan["columns"][col]["strategy"]
+                assert strategy in {
+                    "structural_none_token_plus_indicator",
+                    "structural_zero_plus_indicator",
+                }, f"Unexpected structural strategy: {strategy}"
                 assert plan["columns"][col]["add_missing_indicator"] is True
                 found_structural_strategy = True
             else:

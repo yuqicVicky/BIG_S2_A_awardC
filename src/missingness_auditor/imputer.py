@@ -16,14 +16,25 @@ class Imputer:
     """
     Applies an imputation plan to a DataFrame.
 
-    All statistics (median, mode) are fitted on df_train only, then applied
-    to both df_train and df_predict.  This prevents information from the
-    test/predict set from leaking into imputation parameters.
+    All statistics (median, mode, group medians) are fitted on df_train only,
+    then applied to both df_train and df_predict. This prevents information
+    from the test/predict set from leaking into imputation parameters.
 
-    Usage
-    -----
-    imputed_train = Imputer().apply(df_train, plan)
-    imputed_train, imputed_predict = Imputer().apply(df_train, plan, df_predict)
+    Supported strategies
+    --------------------
+    no_imputation_needed                     : skip
+    drop_column                              : remove column from both datasets
+    numeric_median                           : fill with training-set median
+    numeric_median_plus_indicator            : fill with median + binary indicator
+    groupwise_numeric_median_plus_indicator  : fill with per-group median + indicator
+    group_median                             : alias for groupwise_numeric_median_plus_indicator
+    categorical_missing_token                : fill with "MISSING"
+    categorical_missing_token_plus_indicator : fill with "MISSING" + indicator
+    categorical_mode_plus_indicator          : fill with mode + indicator (legacy)
+    structural_none_token_plus_indicator     : fill categorical with "NONE" + indicator
+    structural_zero_plus_indicator           : fill numeric with 0 + indicator
+    structural_none_or_zero                  : legacy alias (auto-dispatches by dtype)
+    model_based_imputation_optional          : falls back to median
     """
 
     def apply(
@@ -58,11 +69,10 @@ class Imputer:
                 if df_predict is not None and col in df_predict.columns:
                     df_predict = _add_indicator(df_predict, col)
 
-            if strategy == "group_median":
+            if strategy in ("groupwise_numeric_median_plus_indicator", "group_median"):
                 group_col = entry.get("group_col")
                 global_median = df_train[col].median()    # fit on train
                 if group_col and group_col in df_train.columns:
-                    # Build group → median map from train only (leakage-safe)
                     group_map = df_train.groupby(group_col)[col].median().to_dict()
                     df_train[col] = df_train[col].fillna(
                         df_train[group_col].map(group_map)
@@ -82,7 +92,7 @@ class Imputer:
                 if df_predict is not None and col in df_predict.columns:
                     df_predict[col] = df_predict[col].fillna(fill)
 
-            elif strategy == "categorical_missing_token":
+            elif strategy in ("categorical_missing_token", "categorical_missing_token_plus_indicator"):
                 df_train[col] = df_train[col].fillna("MISSING")
                 if df_predict is not None and col in df_predict.columns:
                     df_predict[col] = df_predict[col].fillna("MISSING")
@@ -94,14 +104,25 @@ class Imputer:
                 if df_predict is not None and col in df_predict.columns:
                     df_predict[col] = df_predict[col].fillna(fill)
 
+            elif strategy == "structural_none_token_plus_indicator":
+                df_train[col] = df_train[col].fillna("NONE")
+                if df_predict is not None and col in df_predict.columns:
+                    df_predict[col] = df_predict[col].fillna("NONE")
+
+            elif strategy == "structural_zero_plus_indicator":
+                df_train[col] = df_train[col].fillna(0)
+                if df_predict is not None and col in df_predict.columns:
+                    df_predict[col] = df_predict[col].fillna(0)
+
             elif strategy == "structural_none_or_zero":
+                # Legacy strategy: dispatch by dtype
                 fill = 0 if pd.api.types.is_numeric_dtype(df_train[col]) else "NONE"
                 df_train[col] = df_train[col].fillna(fill)
                 if df_predict is not None and col in df_predict.columns:
                     df_predict[col] = df_predict[col].fillna(fill)
 
             elif strategy == "model_based_imputation_optional":
-                # Falls back to median; full MICE via sklearn IterativeImputer is out of scope
+                # Falls back to median; MICE via IterativeImputer is out of scope
                 fill = df_train[col].median()              # fit on train
                 df_train[col] = df_train[col].fillna(fill)
                 if df_predict is not None and col in df_predict.columns:

@@ -106,8 +106,8 @@ with st.sidebar:
     st.divider()
     st.markdown("**About**")
     st.caption(
-        "Diagnoses missingness mechanisms (MCAR-compatible, MAR-like, MNAR/structural), "
-        "detects structural absence pairs, and produces a leakage-safe imputation plan."
+        "Diagnoses missingness mechanisms (MCAR-compatible, MAR-like, group-dependent, "
+        "target-associated, structural absence), and produces a leakage-safe imputation plan."
     )
 
 # ─────────────────────────────── run audit ──────────────────────────────────
@@ -180,9 +180,11 @@ with tab_mech:
     st.subheader("Missingness mechanism clues")
     st.caption(
         "Labels are statistical clues, not causal claims. "
-        "MCAR-compatible = no obvious correlation with other data; "
-        "MAR-like = correlated with observed features; "
-        "MNAR/structural concern = correlated with target or self-selected."
+        "MCAR-compatible = no significant correlation; "
+        "MAR-like = correlated with observed numeric features; "
+        "group-dependent = concentrated in specific categorical groups; "
+        "target-associated = correlated with target variable; "
+        "structural absence concern = set by structural detector."
     )
     mech_rows = []
     for col, info in mech["columns"].items():

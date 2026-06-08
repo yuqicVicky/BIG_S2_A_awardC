@@ -1,17 +1,32 @@
 {
   "columns": {
     "facility_type": {
-      "mechanism_label": "MNAR/structural concern",
+      "mechanism_label": "target-associated missingness",
       "mechanism_evidence": "missingness_correlated_with_target",
+      "mar_robustness_note": "mechanism_assumption_may_matter_consider_full_mi",
       "correlated_features": [
         {
           "feature": "facility_capacity",
           "correlation": 0.8113
         }
       ],
+      "categorical_correlated_features": [],
       "target_correlation": 0.1009,
-      "target_signal": true
+      "target_signal": true,
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "target_association_evidence": {
+        "detected": true,
+        "correlation": 0.1009
+      },
+      "covariate_association_evidence": [
+        {
+          "feature": "facility_capacity",
+          "correlation": 0.8113
+        }
+      ]
     }
   },
-  "note": "Mechanism labels are statistical clues from observational data only. They do not imply a causal missingness mechanism."
+  "note": "Mechanism labels are statistical clues from observational data only. They do not imply a definitive causal missingness mechanism. MCAR/MAR/MNAR cannot be confirmed from observational data alone. MAR is the recommended default assumption (van Buuren FIMD Ch5)."
 }

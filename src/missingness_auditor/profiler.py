@@ -1,9 +1,12 @@
-"""Missingness profile: per-column missing counts, rates, and severity."""
+"""Missingness profile: per-column missing counts, rates, severity, and cardinality."""
 
 from __future__ import annotations
 
 import pandas as pd
 import numpy as np
+
+_HIGH_CARDINALITY_ABS = 50
+_HIGH_CARDINALITY_RATIO = 0.20
 
 
 def _severity(rate: float) -> str:
@@ -22,6 +25,19 @@ def _severity(rate: float) -> str:
 
 def _dtype_category(series: pd.Series) -> str:
     return "numeric" if pd.api.types.is_numeric_dtype(series) else "categorical"
+
+
+def _cardinality(series: pd.Series) -> int:
+    return int(series.dropna().nunique())
+
+
+def _is_high_cardinality(series: pd.Series, unique_count: int, n_total: int) -> bool:
+    if pd.api.types.is_numeric_dtype(series):
+        return False
+    return (
+        unique_count > _HIGH_CARDINALITY_ABS
+        or (n_total > 0 and unique_count / max(n_total, 1) > _HIGH_CARDINALITY_RATIO)
+    )
 
 
 class MissingnessProfiler:
@@ -46,6 +62,9 @@ class MissingnessProfiler:
             n_missing = int(series.isna().sum())
             missing_rate = round(n_missing / max(n_total, 1), 4)
 
+            unique_count = _cardinality(series)
+            high_card = _is_high_cardinality(series, unique_count, n_total)
+
             predict_missing_rate = None
             if self.predict_df is not None and col in self.predict_df.columns:
                 pred_n = len(self.predict_df[col])
@@ -59,6 +78,9 @@ class MissingnessProfiler:
                 "severity": _severity(missing_rate),
                 "dtype": str(series.dtype),
                 "dtype_category": _dtype_category(series),
+                "unique_count": unique_count,
+                "cardinality": unique_count,
+                "is_high_cardinality": high_card,
                 "is_target": col == self.target_col,
                 "predict_missing_rate": predict_missing_rate,
             }

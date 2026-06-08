@@ -1,8 +1,10 @@
 # Missing Data Report
 
-*Generated: 2026-06-07 20:14:02*
+*Generated: 2026-06-08 18:52:08*
 
 ## Overview
+
+This report diagnoses missingness patterns and recommends a leakage-safe imputation strategy for each column. Mechanism labels are statistical clues from observational data — they do not confirm causal mechanisms.
 
 | Metric | Value |
 |--------|-------|
@@ -11,22 +13,50 @@
 | Columns with missing values | 1 |
 | Overall missing rate | 1.7% |
 
+---
+
 ## Missingness Profile
 
-| Column | Missing Rate | Severity | Dtype | Mechanism Clue |
-|--------|-------------|----------|-------|----------------|
-| `measurement_a` | 6.8% | low | numeric | MCAR-compatible |
+| Column | Missing Rate | Severity | Dtype | Cardinality | Mechanism Clue |
+|--------|-------------|----------|-------|-------------|----------------|
+| `measurement_a` | 6.8% | low | numeric | 746 | MCAR-compatible |
+
+---
+
+## Mechanism Clues
+
+> **Caution:** These labels are observational clues, not causal claims. MCAR, MAR, and MNAR cannot be confirmed from observational data alone. MAR is the recommended default assumption (van Buuren FIMD). Use these clues to inform — not dictate — imputation choices.
+
+- **MCAR-compatible** (1 column(s)): No significant correlation with other features or target. Median/token imputation is sufficient. MAR assumption likely robust when missing rate < 25% and max correlation < 0.4 (Collins et al., 2001).
+
+---
 
 ## Imputation Plan
 
-| Column | Strategy | Add Indicator | Fit On | Reason |
-|--------|----------|--------------|--------|--------|
-| `measurement_a` | `numeric_median` | No | train_only | mcar_compatible_low_missing_rate |
+All imputation statistics must be fitted on **training data only**.
 
-## Strategy Summary
+| Column | Strategy | Indicator | Mechanism | Missing Rate | Reason |
+|--------|----------|-----------|-----------|-------------|--------|
+| `measurement_a` | `numeric_median` | No | MCAR-compatible | 6.8% | mcar_compatible_low_missing_rate |
+
+### Strategy Summary
 
 - `no_imputation_needed`: 3 column(s)
 - `numeric_median`: 1 column(s)
+
+---
+
+## Per-Column Evidence
+
+Evidence collected for each recommendation:
+
+### `measurement_a`
+- **Strategy:** `numeric_median`
+- **Missing rate:** 6.8%
+- **Mechanism label:** MCAR-compatible
+- **MAR robustness:** likely_robust_per_collins2001
+
+---
 
 ## Leakage-Safe Imputation Protocol
 
@@ -37,7 +67,15 @@
 use Pipeline([('imputer', SimpleImputer()), ('model', ...)]); pipeline.fit(X_train, y_train)
 ```
 
-**Missing indicator pattern:**
-```python
-use MissingIndicator(features='missing-only') before imputation in pipeline
-```
+---
+
+## Limitations
+
+- Mechanism labels (MCAR-compatible, MAR-like, group-dependent, target-associated) are statistical clues from observational data. They cannot confirm the true causal mechanism (van Buuren FIMD Ch1).
+- MAR is the default assumption. MNAR cannot be confirmed or ruled out from observational data alone. Sensitivity analysis (e.g., delta-adjustment) is needed when MNAR is suspected (van Buuren FIMD Ch5).
+- Simple median/token imputation (single imputation) underestimates variance and produces confidence intervals that are too narrow. Use full MICE with Rubin's rules when valid statistical inference is required (van Buuren FIMD Ch1, Table 1.1).
+- The MAR robustness note uses Collins et al. (2001) thresholds: missing rate < 25% and max correlation < 0.4. These are empirical guidelines, not hard cutoffs.
+- Group-dependent missingness may overlap with target-associated missingness when the grouping variable (e.g., jurisdiction) also correlates with the target.
+- Structural absence detection relies on categorical NA + numeric zero/absent co-occurrence patterns. False positives are possible for columns where zero is a common legitimate value.
+- High-cardinality detection uses heuristic thresholds (>50 unique values or >20% unique ratio). Domain knowledge should override these thresholds.
+- Groupwise imputation uses training-set group medians fitted on observed rows only. Groups with fewer than 5 observations fall back to the global median.

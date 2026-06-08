@@ -2,16 +2,31 @@
   "columns": {
     "income": {
       "mechanism_label": "MAR-like evidence",
-      "mechanism_evidence": "missingness_correlated_with_observed_features",
+      "mechanism_evidence": "missingness_correlated_with_observed_numeric_features",
+      "mar_robustness_note": "mechanism_assumption_may_matter_consider_full_mi",
       "correlated_features": [
         {
           "feature": "education_level",
           "correlation": 0.8662
         }
       ],
+      "categorical_correlated_features": [],
       "target_correlation": 0.0142,
-      "target_signal": false
+      "target_signal": false,
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": 0.0142
+      },
+      "covariate_association_evidence": [
+        {
+          "feature": "education_level",
+          "correlation": 0.8662
+        }
+      ]
     }
   },
-  "note": "Mechanism labels are statistical clues from observational data only. They do not imply a causal missingness mechanism."
+  "note": "Mechanism labels are statistical clues from observational data only. They do not imply a definitive causal missingness mechanism. MCAR/MAR/MNAR cannot be confirmed from observational data alone. MAR is the recommended default assumption (van Buuren FIMD Ch5)."
 }

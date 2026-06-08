@@ -29,7 +29,7 @@ def test_mnar_mechanism_label():
     df = _make_mnar_df()
     mech = MechanismAuditor(df, target_col="target").audit()
     label = mech["columns"]["credit_score"]["mechanism_label"]
-    assert label == "MNAR/structural concern"
+    assert label == "target-associated missingness"
 
 
 def test_mnar_target_signal_true():

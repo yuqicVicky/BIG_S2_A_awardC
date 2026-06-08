@@ -1,0 +1,21 @@
+{
+  "columns": {
+    "credit_score": {
+      "mechanism_label": "target-associated missingness",
+      "mechanism_evidence": "missingness_correlated_with_target",
+      "correlated_features": [],
+      "categorical_correlated_features": [],
+      "target_correlation": 1.0,
+      "target_signal": true,
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "target_association_evidence": {
+        "detected": true,
+        "correlation": 1.0
+      },
+      "covariate_association_evidence": []
+    }
+  },
+  "note": "Mechanism labels are statistical clues from observational data only. They do not imply a definitive causal missingness mechanism. MCAR/MAR/MNAR cannot be confirmed from observational data alone."
+}
