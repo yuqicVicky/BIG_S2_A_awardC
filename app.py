@@ -308,13 +308,13 @@ with tab_figures:
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("**Missingness Rate by Column**")
-        st.pyplot(figs["missingness_bar"])
+        st.pyplot(figs["missingness_bar"], bbox_inches="tight")
     with c2:
         st.markdown("**Pattern Matrix**")
-        st.pyplot(figs["missingness_matrix"])
+        st.pyplot(figs["missingness_matrix"], bbox_inches="tight")
 
     st.markdown("**Target Signal by Missingness**")
-    st.pyplot(figs["missingness_target_signal"])
+    st.pyplot(figs["missingness_target_signal"], bbox_inches="tight")
 
     for fig in figs.values():
         plt.close(fig)
