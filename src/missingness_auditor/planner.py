@@ -126,6 +126,7 @@ class ImputationPlanner:
                 mech=mech,
                 target_signal=target_signal,
                 is_structural=is_structural,
+                structural_pattern=structural_pattern,
                 is_high_cardinality=is_high_cardinality,
                 top_cat_feature=top_cat_feature,
             )
@@ -191,6 +192,7 @@ class ImputationPlanner:
         mech: str,
         target_signal: bool,
         is_structural: bool,
+        structural_pattern: str | None,
         is_high_cardinality: bool,
         top_cat_feature: str | None,
     ) -> tuple[str, bool, str, str | None, str | None]:
@@ -202,13 +204,20 @@ class ImputationPlanner:
 
         if is_structural:
             if dtype_cat == "numeric":
-                return (
-                    "structural_zero_plus_indicator",
-                    True,
-                    "structural_absence_companion_is_zero",
-                    None,
-                    "verify_true_zero_before_applying_structural_zero",
-                )
+                # Pattern 2 (zero-valued absence): numeric is near-zero when the
+                # categorical is NA — zero-fill is semantically correct here.
+                # Pattern 1 (co_missing_structural): both columns are absent together;
+                # the numeric value is unknown (not zero), so fall through to normal
+                # median / group-median logic below.
+                if structural_pattern != "co_missing_structural":
+                    return (
+                        "structural_zero_plus_indicator",
+                        True,
+                        "structural_absence_companion_is_zero",
+                        None,
+                        "verify_true_zero_before_applying_structural_zero",
+                    )
+                # else: co-missing — fall through to standard numeric imputation
             else:
                 return (
                     "structural_none_token_plus_indicator",

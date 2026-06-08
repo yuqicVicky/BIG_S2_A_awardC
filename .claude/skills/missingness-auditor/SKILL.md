@@ -47,9 +47,11 @@ Read the three JSON files in this order:
 
 Surface to the user **only the columns that have missing values**, sorted by `missing_rate` descending, limited to 10 rows:
 
-| Column | Missing Rate | Severity | Mechanism | Strategy | Add Indicator |
-|--------|-------------|----------|-----------|----------|--------------|
-| ...    | ...         | ...      | ...       | ...      | ...          |
+| Column | Missing Rate | Severity | Mechanism | Strategy | Add Indicator | MI Upgrade? |
+|--------|-------------|----------|-----------|----------|--------------|-------------|
+| ...    | ...         | ...      | ...       | ...      | ...          | ...         |
+
+The `MI Upgrade?` column comes from `imputation_plan.json` → `columns[col].mi_upgrade_recommended`. If `true`, flag it clearly — this column warrants full MICE for inference tasks.
 
 **Step 4 — Present the plan in plain language**
 
@@ -59,6 +61,10 @@ For each column with missing values, write one sentence:
 
 Example:
 > `income` — moderate missingness (32%). Mechanism clue: MAR-like evidence (correlated with `education_level`). Recommended: `numeric_median_plus_indicator`, with a missing indicator added as a binary feature.
+
+If any column has `mi_upgrade_recommended: true`, add a separate warning block:
+
+> **Full MI recommended for:** `[col1]`, `[col2]` — missing rate or covariate correlation exceeds Collins et al. (2001) thresholds (>25% missing or correlation >0.4 with missingness indicator). Median imputation is acceptable for ML feature engineering, but upgrade to MICE (PMM for numeric, logreg/polyreg for categorical) if this data will be used for statistical inference or hypothesis testing (van Buuren FIMD Ch5).
 
 **Step 5 — Ask for confirmation**
 
@@ -121,22 +127,56 @@ for col, entry in plan.items():
         if df_predict is not None:
             df_predict[col] = df_predict[col].fillna(median)
 
-    elif strategy == "categorical_missing_token":
-        df_train[col] = df_train[col].fillna("MISSING")
-        if df_predict is not None:
-            df_predict[col] = df_predict[col].fillna("MISSING")
-
-    elif strategy == "categorical_mode_plus_indicator":
+    elif strategy in ("categorical_missing_token", "categorical_missing_token_plus_indicator"):
         if add_ind:
             df_train  = _add_indicator(df_train, col)
             if df_predict is not None:
                 df_predict = _add_indicator(df_predict, col)
-        mode = df_train[col].mode().iloc[0]                  # fit on train
-        df_train[col] = df_train[col].fillna(mode)
+        df_train[col] = df_train[col].fillna("MISSING")
         if df_predict is not None:
-            df_predict[col] = df_predict[col].fillna(mode)
+            df_predict[col] = df_predict[col].fillna("MISSING")
+
+    elif strategy == "groupwise_numeric_median_plus_indicator":
+        # Group-dependent missingness: fill with per-group median, fit on train only.
+        # group_col comes from imputation_plan.json → columns[col].group_col
+        group_col = entry.get("group_col")
+        if add_ind:
+            df_train  = _add_indicator(df_train, col)
+            if df_predict is not None:
+                df_predict = _add_indicator(df_predict, col)
+        global_median = df_train[col].median()               # fit on train
+        if group_col and group_col in df_train.columns:
+            group_map = df_train.groupby(group_col)[col].median().to_dict()
+            df_train[col] = df_train[col].fillna(df_train[group_col].map(group_map))
+            if df_predict is not None and group_col in df_predict.columns:
+                df_predict[col] = df_predict[col].fillna(df_predict[group_col].map(group_map))
+        df_train[col] = df_train[col].fillna(global_median)   # fallback for unknown groups
+        if df_predict is not None:
+            df_predict[col] = df_predict[col].fillna(global_median)
+
+    elif strategy == "structural_zero_plus_indicator":
+        # Structural absence (Pattern 2): categorical NA encodes absence → numeric is 0.
+        # Example: no garage type → garage_area = 0.
+        if add_ind:
+            df_train  = _add_indicator(df_train, col)
+            if df_predict is not None:
+                df_predict = _add_indicator(df_predict, col)
+        df_train[col] = df_train[col].fillna(0)
+        if df_predict is not None:
+            df_predict[col] = df_predict[col].fillna(0)
+
+    elif strategy == "structural_none_token_plus_indicator":
+        # Structural absence (categorical side): NA encodes "no facility/item".
+        if add_ind:
+            df_train  = _add_indicator(df_train, col)
+            if df_predict is not None:
+                df_predict = _add_indicator(df_predict, col)
+        df_train[col] = df_train[col].fillna("NONE")
+        if df_predict is not None:
+            df_predict[col] = df_predict[col].fillna("NONE")
 
     elif strategy == "structural_none_or_zero":
+        # Legacy alias — dispatches by dtype. Prefer the explicit strategies above.
         if add_ind:
             df_train  = _add_indicator(df_train, col)
             if df_predict is not None:
@@ -309,23 +349,41 @@ python -m missingness_auditor.cli \
 
 ## Imputation strategies
 
-| Strategy | When used |
-|----------|-----------|
-| `no_imputation_needed` | Column is fully observed |
-| `numeric_median` | MCAR-compatible, <10% missing, numeric |
-| `numeric_median_plus_indicator` | MAR-like, MNAR concern, ≥10% missing, numeric |
-| `categorical_missing_token` | Categorical, <10% missing |
-| `categorical_mode_plus_indicator` | Categorical, ≥10% missing |
-| `structural_none_or_zero` | Structural absence pattern detected |
-| `drop_column` | >80% missing |
-| `model_based_imputation_optional` | Complex MAR, moderate missingness |
+| Strategy | When used | MICE equivalent (full MI) |
+|----------|-----------|--------------------------|
+| `no_imputation_needed` | Column is fully observed | — |
+| `numeric_median` | MCAR-compatible, <10% missing, numeric | PMM (predictive mean matching) |
+| `numeric_median_plus_indicator` | MAR-like / target-associated / ≥10% missing, numeric | PMM + indicator |
+| `groupwise_numeric_median_plus_indicator` | Group-dependent missingness; fill with per-group median, fall back to global median | MICE with group predictor |
+| `categorical_missing_token` | Categorical, <10% missing | logreg (binary) / polyreg (nominal) |
+| `categorical_missing_token_plus_indicator` | Categorical, ≥10% missing or high-cardinality | logreg / polyreg + indicator |
+| `structural_zero_plus_indicator` | Structural absence — numeric companion is 0 when categorical is NA (e.g. no garage → garage_area = 0) | 0-fill + indicator |
+| `structural_none_token_plus_indicator` | Structural absence — categorical NA encodes real-world absence | NONE token + indicator |
+| `drop_column` | >80% missing | drop column |
+| `model_based_imputation_optional` | Complex MAR, moderate missingness — falls back to median; upgrade to MICE recommended | MICE (PMM / logreg / polyreg) |
+
+**Deprecated / legacy strategies** (still handled by the imputer for backward compatibility, do not use in new plans):
+
+| Strategy | Replaced by |
+|----------|-------------|
+| `structural_none_or_zero` | `structural_zero_plus_indicator` (numeric) or `structural_none_token_plus_indicator` (categorical) |
+| `categorical_mode_plus_indicator` | `categorical_missing_token_plus_indicator` — mode fill creates spurious repeated values in high-cardinality columns (van Buuren FIMD Ch5) |
 
 ## Missingness mechanism language
 
-Labels are always cautious statistical clues, not causal assignments:
-- **MCAR-compatible** — no significant correlation with observed features or target
-- **MAR-like evidence** — missingness correlates with at least one observed feature
-- **MNAR/structural concern** — missingness correlates with the outcome variable
+Labels are always cautious statistical clues, not causal assignments (van Buuren FIMD Ch1). MCAR, MAR, and MNAR cannot be confirmed from observational data alone.
+
+| Label | Meaning | Planner response |
+|-------|---------|-----------------|
+| `MCAR-compatible` | No significant correlation with features or target; consistent with MCAR | `numeric_median` (low rate) or `numeric_median_plus_indicator` |
+| `MAR-like evidence` | Missingness correlates with ≥1 observed numeric feature | `numeric_median_plus_indicator`; consider MICE for inference |
+| `group-dependent missingness` | Missing rate varies substantially across categorical groups (spread ≥ 20%) | `groupwise_numeric_median_plus_indicator` using the top group feature |
+| `target-associated missingness` | Missingness correlates with the target variable | `numeric_median_plus_indicator`; `mi_upgrade_recommended = true` |
+| `high-cardinality text/category missingness` | Missing values in a high-cardinality categorical column | `categorical_missing_token_plus_indicator` (mode fill unsafe) |
+| `insufficient evidence` | Too few missing rows for reliable analysis (<20 rows) | `numeric_median_plus_indicator` / `categorical_missing_token` |
+| `structural absence concern` | Set by structural detector, not mechanism auditor | `structural_zero_plus_indicator` or `structural_none_token_plus_indicator` |
+
+**MAR robustness note** (from `mar_robustness_note` field): when `likely_robust_per_collins2001`, the missing rate is <25% and max covariate correlation <0.4 — omitting a lurking variable from the imputation model has negligible effect on regression estimates (Collins et al., 2001 via van Buuren FIMD Ch5).
 
 ## Integration in an LLM agent
 

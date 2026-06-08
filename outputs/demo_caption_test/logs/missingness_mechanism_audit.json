@@ -1,0 +1,107 @@
+{
+  "columns": {
+    "age": {
+      "mechanism_label": "MCAR-compatible",
+      "mechanism_evidence": "no_significant_correlation_found",
+      "mar_robustness_note": "likely_robust_per_collins2001",
+      "correlated_features": [],
+      "categorical_correlated_features": [],
+      "target_correlation": 0.0045,
+      "target_signal": false,
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": 0.0045
+      },
+      "covariate_association_evidence": []
+    },
+    "income": {
+      "mechanism_label": "group-dependent missingness",
+      "mechanism_evidence": "missingness_concentrated_in_categorical_groups",
+      "mar_robustness_note": "insufficient_evidence_to_assess",
+      "correlated_features": [],
+      "categorical_correlated_features": [
+        {
+          "feature": "education_level",
+          "correlation": 0.3001,
+          "high_missing_groups": {},
+          "all_group_rates": {
+            "college": 0.072,
+            "graduate": 0.046,
+            "high_school": 0.346
+          }
+        }
+      ],
+      "target_correlation": 0.0439,
+      "target_signal": false,
+      "group_dependency_evidence": {
+        "detected": true,
+        "top_categorical_feature": "education_level",
+        "max_missingness_spread": 0.3001,
+        "high_missing_groups": {}
+      },
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": 0.0439
+      },
+      "covariate_association_evidence": []
+    },
+    "risk_score": {
+      "mechanism_label": "target-associated missingness",
+      "mechanism_evidence": "missingness_correlated_with_target",
+      "mar_robustness_note": "mechanism_assumption_may_matter_consider_full_mi",
+      "correlated_features": [
+        {
+          "feature": "income",
+          "correlation": 0.4222
+        }
+      ],
+      "categorical_correlated_features": [],
+      "target_correlation": 0.4274,
+      "target_signal": true,
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "target_association_evidence": {
+        "detected": true,
+        "correlation": 0.4274
+      },
+      "covariate_association_evidence": [
+        {
+          "feature": "income",
+          "correlation": 0.4222
+        }
+      ]
+    },
+    "facility_quality": {
+      "mechanism_label": "MAR-like evidence",
+      "mechanism_evidence": "missingness_correlated_with_observed_numeric_features",
+      "mar_robustness_note": "mechanism_assumption_may_matter_consider_full_mi",
+      "correlated_features": [
+        {
+          "feature": "facility_area",
+          "correlation": 0.8252
+        }
+      ],
+      "categorical_correlated_features": [],
+      "target_correlation": 0.017,
+      "target_signal": false,
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": 0.017
+      },
+      "covariate_association_evidence": [
+        {
+          "feature": "facility_area",
+          "correlation": 0.8252
+        }
+      ]
+    }
+  },
+  "note": "Mechanism labels are statistical clues from observational data only. They do not imply a definitive causal missingness mechanism. MCAR/MAR/MNAR cannot be confirmed from observational data alone. MAR is the recommended default assumption (van Buuren FIMD Ch5)."
+}

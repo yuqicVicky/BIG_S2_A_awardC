@@ -83,7 +83,10 @@ class StructuralMissingnessDetector:
                 if len(num_when_na) == 0:
                     continue
 
-                # Pattern 1: numeric is mostly NaN when cat is NA
+                # Pattern 1: numeric is mostly NaN when cat is NA.
+                # This is co-missing (both absent together), NOT zero-valued absence.
+                # Flag with "co_missing_structural" so the planner uses median/group
+                # imputation rather than zero-fill.
                 na_frac = float(num_when_na.isna().mean())
                 if na_frac >= _NA_DOMINANCE_THRESHOLD:
                     seen_pairs.add(pair_key)
@@ -95,8 +98,8 @@ class StructuralMissingnessDetector:
                         "na_fraction_when_cat_na": round(na_frac, 4),
                         "zero_fraction_when_cat_na": None,
                     })
-                    flags.setdefault(cat_col, {"is_structural": True, "pattern": "structural_absence"})
-                    flags.setdefault(num_col, {"is_structural": True, "pattern": "structural_absence"})
+                    flags.setdefault(cat_col, {"is_structural": True, "pattern": "co_missing_structural"})
+                    flags.setdefault(num_col, {"is_structural": True, "pattern": "co_missing_structural"})
                     continue
 
                 # Pattern 2: numeric is mostly 0 when cat is NA (with lift check)

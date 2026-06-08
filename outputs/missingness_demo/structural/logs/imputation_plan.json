@@ -1,0 +1,103 @@
+{
+  "columns": {
+    "facility_type": {
+      "strategy": "structural_none_token_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "structural_absence_categorical_na_encodes_absence",
+      "fit_on": "train_only",
+      "missing_rate": 0.4,
+      "dtype": "object",
+      "cardinality": 2,
+      "mechanism_label": "structural absence concern",
+      "target_association_evidence": {
+        "detected": true,
+        "correlation": 0.1009
+      },
+      "covariate_association_evidence": [
+        {
+          "feature": "facility_capacity",
+          "correlation": 0.8113
+        }
+      ],
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "structural_evidence": {
+        "detected": true,
+        "pattern": "structural_absence",
+        "companion_columns": [
+          "facility_capacity"
+        ]
+      },
+      "safety_warning": null,
+      "mi_upgrade_recommended": true
+    },
+    "facility_capacity": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "int64",
+      "cardinality": 69,
+      "mechanism_label": "structural absence concern",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": {
+        "detected": true,
+        "pattern": "structural_absence",
+        "companion_columns": [
+          "facility_type"
+        ]
+      },
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    },
+    "property_size_sqft": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "float64",
+      "cardinality": 200,
+      "mechanism_label": "MCAR-compatible",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    },
+    "target": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "target_column_excluded_from_imputation",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "float64",
+      "cardinality": 200,
+      "mechanism_label": "N/A",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": null,
+      "safety_warning": null
+    }
+  },
+  "summary": {
+    "strategy_counts": {
+      "structural_none_token_plus_indicator": 1,
+      "no_imputation_needed": 3
+    },
+    "columns_needing_missing_indicator": [
+      "facility_type"
+    ],
+    "n_columns_to_impute": 1,
+    "columns_where_full_mi_recommended": [
+      "facility_type"
+    ]
+  },
+  "leakage_protocol": "All imputation statistics (median, mode, group medians, model parameters) must be fitted on training data only and applied to prediction data."
+}

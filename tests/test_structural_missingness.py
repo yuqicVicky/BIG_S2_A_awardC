@@ -73,3 +73,45 @@ def test_non_structural_column_unaffected():
     struct = StructuralMissingnessDetector(df).detect()
     plan = ImputationPlanner(profile, mech, struct).plan()
     assert plan["columns"]["other_feature"]["strategy"] == "no_imputation_needed"
+
+
+def test_co_missing_pattern_uses_median_not_zero():
+    """Pattern 1 (both cols absent together) must NOT fill numeric with 0.
+
+    Simulates geographic data: when 'state' is unknown, weather values are
+    also missing — but those values are unknown, not zero.
+    """
+    import numpy as np
+
+    rng = np.random.default_rng(42)
+    n_known, n_unknown = 150, 50
+    n = n_known + n_unknown
+
+    state = rng.choice(["CA", "TX", "NY"], n_known).tolist() + [None] * n_unknown
+    precipitation = rng.uniform(10, 100, n_known).tolist() + [None] * n_unknown
+    temperature = rng.uniform(5, 35, n_known).tolist() + [None] * n_unknown
+    target = rng.normal(50, 10, n).tolist()
+
+    df = pd.DataFrame({
+        "state": state,
+        "precipitation": precipitation,
+        "temperature": temperature,
+        "target": target,
+    })
+
+    struct = StructuralMissingnessDetector(df).detect()
+    # Pattern 1 fires: state is NA whenever precipitation/temperature are NA
+    if "precipitation" in struct["column_flags"]:
+        assert struct["column_flags"]["precipitation"]["pattern"] == "co_missing_structural"
+
+    profile = MissingnessProfiler(df, target_col="target").profile()
+    mech = MechanismAuditor(df, target_col="target").audit()
+    plan = ImputationPlanner(profile, mech, struct).plan()
+
+    for col in ("precipitation", "temperature"):
+        if col not in plan["columns"]:
+            continue
+        strategy = plan["columns"][col]["strategy"]
+        assert strategy != "structural_zero_plus_indicator", (
+            f"{col} was co-missing (unknown, not zero) but got zero-fill strategy"
+        )

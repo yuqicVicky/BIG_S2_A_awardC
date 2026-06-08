@@ -9,11 +9,12 @@ or:
 
 from __future__ import annotations
 
-import json
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_HERE, "..", "..", "src"))
+sys.path.insert(0, _HERE)
 
 from make_demo_data import (
     make_mcar_dataset,
@@ -45,12 +46,13 @@ def run_all(base_out: str = "outputs/missingness_demo") -> None:
         out_dir = os.path.join(base_out, case_id)
 
         auditor = MissingnessAuditor(df, target_col=target_col)
-        results = auditor.run(output_dir=out_dir)
+        results = auditor.run()
+        auditor.save_outputs(results, out_dir)
 
-        profile = results["profile"]
-        mechanism = results["mechanism"]
+        profile = results["missingness_profile"]
+        mechanism = results["mechanism_audit"]
         plan = results["imputation_plan"]
-        leakage = results["leakage_check"]
+        leakage = results["leakage_safe_check"]
 
         print(f"\n  Dataset shape: {df.shape}")
         missing_cols = profile["columns_with_missing"]

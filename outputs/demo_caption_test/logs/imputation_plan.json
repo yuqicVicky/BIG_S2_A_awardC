@@ -1,0 +1,182 @@
+{
+  "columns": {
+    "age": {
+      "strategy": "numeric_median_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "mechanism='MCAR-compatible'_or_moderate_missing_rate",
+      "fit_on": "train_only",
+      "missing_rate": 0.101,
+      "dtype": "float64",
+      "cardinality": 887,
+      "mechanism_label": "MCAR-compatible",
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": 0.0045
+      },
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    },
+    "income": {
+      "strategy": "groupwise_numeric_median_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "group_dependent_missingness_by_feature='education_level'",
+      "fit_on": "train_only",
+      "missing_rate": 0.177,
+      "dtype": "float64",
+      "cardinality": 823,
+      "mechanism_label": "group-dependent missingness",
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": 0.0439
+      },
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": {
+        "detected": true,
+        "top_categorical_feature": "education_level",
+        "max_missingness_spread": 0.3001,
+        "high_missing_groups": {}
+      },
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": true,
+      "group_col": "education_level"
+    },
+    "education_level": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "object",
+      "cardinality": 3,
+      "mechanism_label": "MCAR-compatible",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    },
+    "risk_score": {
+      "strategy": "numeric_median_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "mechanism='target-associated missingness'_or_moderate_missing_rate",
+      "fit_on": "train_only",
+      "missing_rate": 0.111,
+      "dtype": "float64",
+      "cardinality": 889,
+      "mechanism_label": "target-associated missingness",
+      "target_association_evidence": {
+        "detected": true,
+        "correlation": 0.4274
+      },
+      "covariate_association_evidence": [
+        {
+          "feature": "income",
+          "correlation": 0.4222
+        }
+      ],
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": true
+    },
+    "facility_area": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "int64",
+      "cardinality": 4,
+      "mechanism_label": "structural absence concern",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": {
+        "detected": true,
+        "pattern": "structural_absence",
+        "companion_columns": [
+          "facility_quality"
+        ]
+      },
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    },
+    "facility_quality": {
+      "strategy": "structural_none_token_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "structural_absence_categorical_na_encodes_absence",
+      "fit_on": "train_only",
+      "missing_rate": 0.378,
+      "dtype": "object",
+      "cardinality": 3,
+      "mechanism_label": "structural absence concern",
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": 0.017
+      },
+      "covariate_association_evidence": [
+        {
+          "feature": "facility_area",
+          "correlation": 0.8252
+        }
+      ],
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "structural_evidence": {
+        "detected": true,
+        "pattern": "structural_absence",
+        "companion_columns": [
+          "facility_area"
+        ]
+      },
+      "safety_warning": null,
+      "mi_upgrade_recommended": true
+    },
+    "target": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "target_column_excluded_from_imputation",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "float64",
+      "cardinality": 1000,
+      "mechanism_label": "N/A",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": null,
+      "safety_warning": null
+    }
+  },
+  "summary": {
+    "strategy_counts": {
+      "numeric_median_plus_indicator": 2,
+      "groupwise_numeric_median_plus_indicator": 1,
+      "no_imputation_needed": 3,
+      "structural_none_token_plus_indicator": 1
+    },
+    "columns_needing_missing_indicator": [
+      "age",
+      "income",
+      "risk_score",
+      "facility_quality"
+    ],
+    "n_columns_to_impute": 4,
+    "columns_where_full_mi_recommended": [
+      "income",
+      "risk_score",
+      "facility_quality"
+    ]
+  },
+  "leakage_protocol": "All imputation statistics (median, mode, group medians, model parameters) must be fitted on training data only and applied to prediction data."
+}

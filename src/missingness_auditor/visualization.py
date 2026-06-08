@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import textwrap
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -81,6 +82,21 @@ class MissingnessVisualizer:
         ]
         ax.legend(handles=legend_patches, loc="upper right", fontsize=8)
         fig.tight_layout()
+
+        n_high = int((rates >= 0.80).sum())
+        n_mod  = int(((rates >= 0.20) & (rates < 0.80)).sum())
+        n_low  = int((rates < 0.20).sum())
+        top_col  = rates.index[0]
+        top_rate = rates.iloc[0]
+        parts = [f"{len(rates)} column(s) have missing values "
+                 f"(highest: '{top_col}' at {top_rate:.1%})."]
+        if n_high:
+            parts.append(f"{n_high} column(s) exceed 80% — too sparse to impute reliably; consider dropping.")
+        if n_mod:
+            parts.append(f"{n_mod} moderate (20–80%) and {n_low} low (<20%) severity column(s) — imputation with a missing indicator is recommended.")
+        else:
+            parts.append(f"All missing rates are below 20% — median imputation is generally sufficient; add a missing indicator if mechanism is non-MCAR.")
+        self._add_caption(fig, " ".join(parts))
         return fig
 
     def _pattern_matrix_fig(self) -> plt.Figure:
@@ -101,6 +117,27 @@ class MissingnessVisualizer:
         ax.set_xlabel("Rows (sample)")
         ax.set_title("Missingness Pattern Matrix\n(green = present, red = missing)")
         fig.tight_layout()
+
+        row_miss_counts = mat.sum(axis=1)
+        n_multi = int((row_miss_counts >= 2).sum())
+        pct_multi = n_multi / len(mat)
+        n_any = int((row_miss_counts >= 1).sum())
+        pct_any = n_any / len(mat)
+        if pct_multi > 0.05:
+            caption = (
+                f"{pct_any:.1%} of rows (sample) have at least one missing value; "
+                f"{pct_multi:.1%} are missing in 2+ columns simultaneously. "
+                "Clustered red bands across columns indicate systematic co-missingness — "
+                "likely MAR or MNAR rather than independent random dropout."
+            )
+        else:
+            caption = (
+                f"{pct_any:.1%} of rows (sample) have at least one missing value. "
+                "Missingness appears largely independent across columns — "
+                "consistent with MCAR (random dropout). "
+                "No strong co-missingness pattern detected."
+            )
+        self._add_caption(fig, caption)
         return fig
 
     def _target_signal_fig(self) -> plt.Figure:
@@ -147,7 +184,49 @@ class MissingnessVisualizer:
         ax.set_title("Target signal by missingness\n(difference → MAR-like or MNAR/structural pattern)")
         ax.legend(fontsize=9)
         fig.tight_layout()
+
+        tgt_std = float(tgt.std()) if is_num else 1.0
+        diffs = [abs(mv - pv) for pv, mv in zip(present_vals, missing_vals)]
+        if diffs:
+            max_idx  = int(np.argmax(diffs))
+            max_col  = labels[max_idx]
+            max_diff = diffs[max_idx]
+            norm_diff = max_diff / tgt_std if tgt_std > 0 else 0.0
+            if norm_diff >= 0.10:
+                direction = "higher" if missing_vals[max_idx] > present_vals[max_idx] else "lower"
+                caption = (
+                    f"Strongest signal: '{max_col}' — rows where this feature is missing have a "
+                    f"{direction} mean target (Δ = {max_diff:.2f}, {norm_diff:.2f}σ). "
+                    "A substantial gap suggests MAR-like or MNAR missingness: "
+                    "the missingness indicator carries predictive information and should be retained."
+                )
+            else:
+                caption = (
+                    f"Target means are similar between missing and present rows across all columns "
+                    f"(max Δ = {max(diffs):.2f}, {norm_diff:.2f}σ for '{labels[int(np.argmax(diffs))]}'), "
+                    "consistent with MCAR. Missing indicators may add little predictive value."
+                )
+        else:
+            caption = "No target signal could be computed."
+        self._add_caption(fig, caption)
         return fig
+
+    @staticmethod
+    def _add_caption(fig: plt.Figure, text: str) -> None:
+        """Render a data-driven interpretation below the figure axes.
+
+        Placed at y < 0 so it falls outside the axes area; bbox_inches='tight'
+        captures it when saving.
+        """
+        wrapped = "\n".join(textwrap.wrap(text, width=100))
+        n_lines = wrapped.count("\n") + 1
+        fig.text(
+            0.5, -0.03 - 0.035 * (n_lines - 1),
+            wrapped,
+            ha="center", va="top",
+            fontsize=8, style="italic",
+            color="#555555",
+        )
 
     @staticmethod
     def _blank_fig(message: str) -> plt.Figure:

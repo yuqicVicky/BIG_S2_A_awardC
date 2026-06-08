@@ -1,0 +1,108 @@
+{
+  "columns": {
+    "age": {
+      "n_total": 1000,
+      "n_missing": 101,
+      "missing_rate": 0.101,
+      "severity": "low",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "unique_count": 887,
+      "cardinality": 887,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "income": {
+      "n_total": 1000,
+      "n_missing": 177,
+      "missing_rate": 0.177,
+      "severity": "low",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "unique_count": 823,
+      "cardinality": 823,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "education_level": {
+      "n_total": 1000,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "object",
+      "dtype_category": "categorical",
+      "unique_count": 3,
+      "cardinality": 3,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "risk_score": {
+      "n_total": 1000,
+      "n_missing": 111,
+      "missing_rate": 0.111,
+      "severity": "low",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "unique_count": 889,
+      "cardinality": 889,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "facility_area": {
+      "n_total": 1000,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "int64",
+      "dtype_category": "numeric",
+      "unique_count": 4,
+      "cardinality": 4,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "facility_quality": {
+      "n_total": 1000,
+      "n_missing": 378,
+      "missing_rate": 0.378,
+      "severity": "moderate",
+      "dtype": "object",
+      "dtype_category": "categorical",
+      "unique_count": 3,
+      "cardinality": 3,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "target": {
+      "n_total": 1000,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "unique_count": 1000,
+      "cardinality": 1000,
+      "is_high_cardinality": false,
+      "is_target": true,
+      "predict_missing_rate": null
+    }
+  },
+  "summary": {
+    "total_rows": 1000,
+    "total_columns": 7,
+    "columns_with_any_missing": 4,
+    "total_missing_cells": 767,
+    "overall_missing_rate": 0.1096
+  },
+  "columns_with_missing": [
+    "age",
+    "income",
+    "risk_score",
+    "facility_quality"
+  ]
+}

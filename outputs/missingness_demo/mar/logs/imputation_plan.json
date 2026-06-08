@@ -1,0 +1,91 @@
+{
+  "columns": {
+    "education_level": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "float64",
+      "cardinality": 3,
+      "mechanism_label": "MCAR-compatible",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    },
+    "income": {
+      "strategy": "numeric_median_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "mechanism='MAR-like evidence'_or_moderate_missing_rate",
+      "fit_on": "train_only",
+      "missing_rate": 0.3187,
+      "dtype": "float64",
+      "cardinality": 545,
+      "mechanism_label": "MAR-like evidence",
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": 0.0142
+      },
+      "covariate_association_evidence": [
+        {
+          "feature": "education_level",
+          "correlation": 0.8662
+        }
+      ],
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": true
+    },
+    "years_experience": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "float64",
+      "cardinality": 785,
+      "mechanism_label": "MCAR-compatible",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    },
+    "target": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "target_column_excluded_from_imputation",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "float64",
+      "cardinality": 800,
+      "mechanism_label": "N/A",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": null,
+      "safety_warning": null
+    }
+  },
+  "summary": {
+    "strategy_counts": {
+      "no_imputation_needed": 3,
+      "numeric_median_plus_indicator": 1
+    },
+    "columns_needing_missing_indicator": [
+      "income"
+    ],
+    "n_columns_to_impute": 1,
+    "columns_where_full_mi_recommended": [
+      "income"
+    ]
+  },
+  "leakage_protocol": "All imputation statistics (median, mode, group medians, model parameters) must be fitted on training data only and applied to prediction data."
+}
