@@ -1,11 +1,11 @@
-"""Streamlit web demo — Missingness Audit & Imputation Planner."""
+"""Streamlit web demo — AI-Guided Missingness Audit & Imputation Planner."""
 
 from __future__ import annotations
 
-import io
 import json
 import os
 import sys
+from typing import Optional
 
 import anthropic
 import matplotlib
@@ -20,14 +20,13 @@ from missingness_auditor import MissingnessAuditor
 from missingness_auditor.visualization import MissingnessVisualizer
 from missingness_auditor.reporting import ReportWriter
 
-# ─────────────────────────────── page config ────────────────────────────────
 st.set_page_config(
-    page_title="Missingness Audit & Imputation Planner",
-    page_icon="🔍",
+    page_title="AI Missingness Auditor",
+    page_icon="🤖",
     layout="wide",
 )
 
-# ─────────────────────────────── helpers ────────────────────────────────────
+# ──────────────────────────────────────────────── helpers ────────────────────
 
 def _demo_df() -> pd.DataFrame:
     demo_path = os.path.join(os.path.dirname(__file__), "examples", "demo_missingness.csv")
@@ -40,47 +39,104 @@ def _demo_df() -> pd.DataFrame:
     income = np.where(rng.random(n) < 0.35, np.nan, rng.normal(50000, 15000, n))
     risk = rng.normal(650, 90, n).astype(float)
     risk[target == 1] = np.nan
-    return pd.DataFrame({
-        "age": age, "income": income, "risk_score": risk, "target": target,
-    })
-
-
-def _fig_to_bytes(fig: plt.Figure) -> bytes:
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", dpi=100)
-    buf.seek(0)
-    return buf.read()
+    return pd.DataFrame({"age": age, "income": income, "risk_score": risk, "target": target})
 
 
 def _df_to_csv(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode()
 
 
-def _reset_audit() -> None:
-    for key in ["audit_results", "imputed_df", "imputed_df_predict"]:
+def _reset() -> None:
+    for key in [
+        "audit_results", "auditor", "df_train", "df_predict", "target_col",
+        "imputed_df", "imputed_df_predict", "ai_sections",
+        "chat_history", "imputation_summary",
+    ]:
         st.session_state.pop(key, None)
 
 
-# ─────────────────────────────── sidebar ────────────────────────────────────
+def _build_context(results: dict, target_col: Optional[str]) -> str:
+    """Compact text summary of all audit results for LLM context."""
+    profile = results["missingness_profile"]
+    mech = results["mechanism_audit"]
+    struct = results["structural_missingness"]
+    plan = results["imputation_plan"]
+    leakage = results["leakage_safe_check"]
+    summary = profile["summary"]
+
+    col_lines = []
+    for col, info in profile["columns"].items():
+        m = mech["columns"].get(col, {})
+        p = plan["columns"].get(col, {})
+        col_lines.append(
+            f"  - {col}: {info['missing_rate']:.1%} missing, severity={info['severity']}, "
+            f"dtype={info['dtype_category']}, mechanism={m.get('mechanism_label', '?')}, "
+            f"target_signal={m.get('target_signal', False)}, strategy={p.get('strategy', '?')}"
+        )
+
+    if struct["n_structural_pairs"] > 0:
+        struct_str = (
+            f"{struct['n_structural_pairs']} structural pairs: "
+            + ", ".join(
+                f"{p['categorical_col']}→{p['numeric_col']}"
+                for p in struct["structural_pairs"]
+            )
+        )
+    else:
+        struct_str = "none"
+
+    return (
+        f"Dataset: {summary['total_rows']:,} rows × {summary['total_columns']} columns | "
+        f"Target: {target_col or 'none'} | "
+        f"Overall missing rate: {summary['overall_missing_rate']:.1%} | "
+        f"Columns with missing: {summary['columns_with_any_missing']}/{summary['total_columns']} | "
+        f"Structural absence: {struct_str} | "
+        f"Leakage: {leakage.get('high_risk_count', 0)} high-risk, "
+        f"{leakage.get('medium_risk_count', 0)} medium-risk\n\n"
+        f"Per-column breakdown:\n"
+        + "\n".join(col_lines)
+        + f"\n\nStrategy counts: {json.dumps(plan.get('summary', {}).get('strategy_counts', {}))}"
+    )
+
+
+def _claude_call(client: anthropic.Anthropic, prompt: str, max_tokens: int = 400) -> str:
+    try:
+        resp = client.messages.create(
+            model="claude-opus-4-8",
+            max_tokens=max_tokens,
+            thinking={"type": "adaptive"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return next((b.text for b in resp.content if b.type == "text"), "")
+    except Exception as e:
+        return f"_(AI insight unavailable: {e})_"
+
+
+def _show_insight(key: str, ai_sections: dict, api_key: str) -> None:
+    if text := ai_sections.get(key):
+        st.info(f"🤖 **Claude:** {text}")
+    elif not api_key:
+        st.caption("_Add an API key in the sidebar for AI-guided insights._")
+
+
+# ──────────────────────────────────────────────── sidebar ────────────────────
 with st.sidebar:
-    st.title("🔍 Missingness Auditor")
-    st.caption("Upload a CSV or load the demo dataset to diagnose missing data.")
+    st.title("🤖 AI Missingness Auditor")
+    st.caption("Claude narrates every step of your missing-data analysis.")
 
     st.divider()
-    st.markdown("**Claude API Key**")
     api_key_input = st.text_input(
         "Anthropic API Key",
         type="password",
         placeholder="sk-ant-...",
-        help="Enter your Anthropic API key to enable AI-powered analysis.",
-        label_visibility="collapsed",
+        help="Required for AI-guided analysis.",
     )
     if api_key_input:
-        st.success("API key set ✓", icon="🔑")
+        st.success("API key ready ✓", icon="🔑")
     else:
-        st.info("Add an API key to unlock the **AI Analysis** tab.", icon="ℹ️")
-    st.divider()
+        st.info("Add an API key for AI analysis.", icon="🔑")
 
+    st.divider()
     source = st.radio("Data source", ["Upload CSV", "Use demo dataset"], index=1)
 
     df_train: pd.DataFrame | None = None
@@ -93,7 +149,7 @@ with st.sidebar:
             if st.session_state.get("_train_file_key") != file_key:
                 st.session_state["_train_file_key"] = file_key
                 st.session_state["_df_train_cached"] = pd.read_csv(uploaded)
-                _reset_audit()
+                _reset()
             df_train = st.session_state.get("_df_train_cached")
         uploaded_pred = st.file_uploader("Predict CSV (optional)", type="csv")
         if uploaded_pred:
@@ -104,49 +160,60 @@ with st.sidebar:
             df_predict = st.session_state.get("_df_pred_cached")
     else:
         if st.button("Load demo dataset"):
-            _reset_audit()
+            _reset()
             st.session_state.pop("_train_file_key", None)
-            st.session_state.pop("_pred_file_key", None)
         df_train = _demo_df()
 
     if df_train is not None:
         all_cols = ["(none)"] + list(df_train.columns)
         target_col = st.selectbox("Target column", all_cols)
         target_col = None if target_col == "(none)" else target_col
-
-        run_btn = st.button("▶ Run Audit", type="primary", use_container_width=True)
+        run_btn = st.button("▶ Run AI Audit", type="primary", use_container_width=True)
     else:
         target_col = None
         run_btn = False
 
     st.divider()
-    st.markdown("**About**")
     st.caption(
-        "Diagnoses missingness mechanisms (MCAR-compatible, MAR-like, group-dependent, "
-        "target-associated, structural absence), and produces a leakage-safe imputation plan."
+        "This demo uses Claude to diagnose missingness mechanisms, interpret "
+        "structural patterns, and recommend a leakage-safe imputation plan — "
+        "with AI narration at every step."
     )
 
-# ─────────────────────────────── run audit ──────────────────────────────────
+# ─────────────────────────────────────────────── run audit ───────────────────
 if run_btn and df_train is not None:
     with st.spinner("Running missingness audit…"):
-        auditor = MissingnessAuditor(df_train, df_predict, target_col=target_col)
-        st.session_state["audit_results"] = auditor.run()
-        st.session_state["auditor"] = auditor
-        st.session_state["df_train"] = df_train
-        st.session_state["df_predict"] = df_predict
-        st.session_state.pop("imputed_df", None)
-        st.session_state.pop("imputed_df_predict", None)
+        auditor = MissingnessAuditor(df_train, predict_df=df_predict, target_col=target_col)
+        results = auditor.run()
+    st.session_state.update(
+        {
+            "audit_results": results,
+            "auditor": auditor,
+            "df_train": df_train,
+            "df_predict": df_predict,
+            "target_col": target_col,
+        }
+    )
+    for k in ("imputed_df", "imputed_df_predict", "ai_sections",
+               "chat_history", "imputation_summary"):
+        st.session_state.pop(k, None)
 
-# ─────────────────────────────── main area ──────────────────────────────────
+# ────────────────────────────────────────────── landing page ─────────────────
 if "audit_results" not in st.session_state:
-    st.title("Missingness Audit & Imputation Planner")
-    st.info("Select a dataset in the sidebar and click **▶ Run Audit** to begin.")
+    st.title("AI-Guided Missingness Audit")
+    st.markdown(
+        "Upload your dataset and let **Claude** walk you through every step: "
+        "profile → mechanisms → structural patterns → imputation plan."
+    )
+    st.info("Select a dataset in the sidebar and click **▶ Run AI Audit** to begin.")
     st.stop()
 
+# ──────────────────────────────────────────── retrieve state ─────────────────
 results = st.session_state["audit_results"]
 auditor: MissingnessAuditor = st.session_state["auditor"]
 df_train = st.session_state["df_train"]
 df_predict = st.session_state.get("df_predict")
+target_col = st.session_state.get("target_col")
 
 profile = results["missingness_profile"]
 mech = results["mechanism_audit"]
@@ -154,290 +221,352 @@ struct = results["structural_missingness"]
 plan = results["imputation_plan"]
 leakage = results["leakage_safe_check"]
 summary = profile["summary"]
+sc = plan.get("summary", {}).get("strategy_counts", {})
 
-st.title("Missingness Audit Report")
+# ───────────────────────────────── generate AI section insights (once) ───────
+if api_key_input and "ai_sections" not in st.session_state:
+    client = anthropic.Anthropic(api_key=api_key_input)
+    ctx = _build_context(results, target_col)
+    BASE = f"You are a senior data scientist reviewing this missing-data audit:\n\n{ctx}\n\n"
 
-# ── top-level KPIs
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Rows", f"{summary['total_rows']:,}")
-col2.metric("Columns", summary["total_columns"])
-col3.metric("With missing", summary["columns_with_any_missing"])
-col4.metric("Overall rate", f"{summary['overall_missing_rate']:.1%}")
+    with st.spinner("Claude is analyzing your dataset…"):
+        ai_sections: dict[str, str] = {}
+        try:
+            ai_sections["overview"] = _claude_call(
+                client,
+                BASE
+                + "Write a 3-sentence executive summary covering: (1) overall severity, "
+                "(2) the most concerning column(s), (3) the main modeling risk. "
+                "Be specific to these numbers.",
+                400,
+            )
+            ai_sections["profile"] = _claude_call(
+                client,
+                BASE
+                + "In 3 sentences, explain the per-column missingness profile. "
+                "Which columns have critical or high severity, and what does that mean for "
+                "downstream model quality?",
+                350,
+            )
+            ai_sections["mechanisms"] = _claude_call(
+                client,
+                BASE
+                + "In 4 sentences, explain what the detected missingness mechanisms mean for "
+                "this dataset. Focus on any target-associated or MAR-like columns and their "
+                "bias implications for a predictive model.",
+                450,
+            )
+            ai_sections["structural"] = _claude_call(
+                client,
+                BASE
+                + (
+                    "In 2-3 sentences, interpret the structural absence patterns found and "
+                    "explain what they imply for imputation."
+                    if struct["n_structural_pairs"] > 0
+                    else "In 2 sentences, confirm no structural absence was found and explain "
+                    "why that simplifies imputation."
+                ),
+                300,
+            )
+            ai_sections["plan"] = _claude_call(
+                client,
+                BASE
+                + "In 4 sentences, explain the imputation strategies recommended. Why do "
+                "specific columns get their strategies? What must the analyst do before "
+                "model training to avoid leakage?",
+                450,
+            )
+        except anthropic.AuthenticationError:
+            st.error("Invalid API key. Please check your key in the sidebar.")
+            ai_sections = {}
+        except Exception as e:
+            st.warning(f"Could not generate AI insights: {e}")
+            ai_sections = {}
 
-# ── tabs
-tab_profile, tab_mech, tab_struct, tab_plan, tab_figures, tab_ai = st.tabs([
-    "📊 Profile", "🧩 Mechanisms", "🏗 Structural", "📋 Imputation Plan", "🖼 Figures", "🤖 AI Analysis"
-])
+    st.session_state["ai_sections"] = ai_sections
 
-# ── Tab 1: Profile
-with tab_profile:
-    st.subheader("Per-column missingness profile")
-    rows = []
-    for col, info in profile["columns"].items():
-        rows.append({
-            "Column": col,
-            "Missing Rate": f"{info['missing_rate']:.1%}",
-            "Severity": info["severity"],
-            "Dtype": info["dtype_category"],
-            "Is Target": "✓" if info.get("is_target") else "",
-        })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+ai_sections: dict[str, str] = st.session_state.get("ai_sections", {})
 
-    if "predict_missing_rates" in profile and profile["predict_missing_rates"]:
-        st.subheader("Predict-set missing rates")
-        pred_rows = [
-            {"Column": c, "Predict Missing Rate": f"{r:.1%}"}
-            for c, r in profile["predict_missing_rates"].items()
-        ]
-        st.dataframe(pd.DataFrame(pred_rows), use_container_width=True, hide_index=True)
+def _insight(key: str) -> None:
+    _show_insight(key, ai_sections, api_key_input)
 
-# ── Tab 2: Mechanisms
-with tab_mech:
-    st.subheader("Missingness mechanism clues")
-    st.caption(
-        "Labels are statistical clues, not causal claims. "
-        "MCAR-compatible = no significant correlation; "
-        "MAR-like = correlated with observed numeric features; "
-        "group-dependent = concentrated in specific categorical groups; "
-        "target-associated = correlated with target variable; "
-        "structural absence concern = set by structural detector."
-    )
-    mech_rows = []
-    for col, info in mech["columns"].items():
-        mech_rows.append({
-            "Column": col,
-            "Mechanism Clue": info["mechanism_label"],
-            "Target Signal": "Yes" if info.get("target_signal") else "No",
-            "Target Corr": (
-                f"{info['target_correlation']:.3f}"
-                if info.get("target_correlation") is not None
-                else "—"
-            ),
-            "Top Correlated Feature": (
-                info["correlated_features"][0]["feature"]
-                if info.get("correlated_features")
-                else "—"
-            ),
-        })
-    st.dataframe(pd.DataFrame(mech_rows), use_container_width=True, hide_index=True)
+# ──────────────────────────────────────────────── main report ────────────────
+st.title("AI Missingness Audit Report")
 
-# ── Tab 3: Structural
-with tab_struct:
-    st.subheader("Structural absence pairs")
-    if struct["n_structural_pairs"] == 0:
-        st.success("No structural missingness pairs detected.")
-    else:
-        st.warning(f"{struct['n_structural_pairs']} structural pair(s) detected.")
-        pair_rows = [
+# KPIs
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Rows", f"{summary['total_rows']:,}")
+c2.metric("Columns", summary["total_columns"])
+c3.metric("With missing", summary["columns_with_any_missing"])
+c4.metric("Overall rate", f"{summary['overall_missing_rate']:.1%}")
+
+_insight("overview")
+
+st.divider()
+
+# ── Section 1: Profile ────────────────────────────────────────────────────────
+st.subheader("📊 Missingness Profile")
+st.dataframe(
+    pd.DataFrame(
+        [
             {
-                "Categorical (NA)": p["categorical_col"],
-                "Numeric (companion)": p["numeric_col"],
-                "Pattern": p["pattern"],
-                "NA fraction": f"{(p.get('na_fraction_when_cat_na') or p.get('na_fraction_for_group', 0)):.1%}",
+                "Column": col,
+                "Missing Rate": f"{info['missing_rate']:.1%}",
+                "Severity": info["severity"],
+                "Dtype": info["dtype_category"],
+                "Is Target": "✓" if info.get("is_target") else "",
             }
-            for p in struct["structural_pairs"]
+            for col, info in profile["columns"].items()
         ]
-        st.dataframe(pd.DataFrame(pair_rows), use_container_width=True, hide_index=True)
+    ),
+    use_container_width=True,
+    hide_index=True,
+)
+_insight("profile")
 
-    flag_rows = [
-        {"Column": c, "Is Structural": "✓" if f["is_structural"] else ""}
-        for c, f in struct.get("column_flags", {}).items()
-        if f["is_structural"]
-    ]
-    if flag_rows:
-        st.subheader("Flagged columns")
-        st.dataframe(pd.DataFrame(flag_rows), use_container_width=True, hide_index=True)
+if profile.get("predict_missing_rates"):
+    st.markdown("**Predict-set missing rates**")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {"Column": c, "Predict Missing Rate": f"{r:.1%}"}
+                for c, r in profile["predict_missing_rates"].items()
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
 
-# ── Tab 4: Imputation Plan
-with tab_plan:
-    st.subheader("Recommended imputation plan")
+st.divider()
 
-    leakage_risk = leakage.get("high_risk_count", 0) + leakage.get("medium_risk_count", 0)
-    if leakage_risk > 0:
-        st.warning(
-            f"Leakage risk: {leakage.get('high_risk_count', 0)} high, "
-            f"{leakage.get('medium_risk_count', 0)} medium risk finding(s). "
-            "See details below."
-        )
-    else:
-        st.success("No leakage risk detected. Safe to proceed with the plan.")
+# ── Section 2: Mechanisms ─────────────────────────────────────────────────────
+st.subheader("🧩 Missingness Mechanisms")
+st.caption(
+    "MCAR-compatible: no detectable correlation. "
+    "MAR-like: correlated with other observed features. "
+    "Target-associated: correlated with the outcome — bias risk. "
+    "Structural absence: driven by categorical group membership."
+)
+st.dataframe(
+    pd.DataFrame(
+        [
+            {
+                "Column": col,
+                "Mechanism": info["mechanism_label"],
+                "Target Signal": "Yes" if info.get("target_signal") else "No",
+                "Target Corr": (
+                    f"{info['target_correlation']:.3f}"
+                    if info.get("target_correlation") is not None
+                    else "—"
+                ),
+                "Top Correlated": (
+                    info["correlated_features"][0]["feature"]
+                    if info.get("correlated_features")
+                    else "—"
+                ),
+            }
+            for col, info in mech["columns"].items()
+        ]
+    ),
+    use_container_width=True,
+    hide_index=True,
+)
+_insight("mechanisms")
 
-    plan_rows = []
-    for col, entry in plan["columns"].items():
-        plan_rows.append({
-            "Column": col,
-            "Strategy": entry["strategy"],
-            "Group By": entry.get("group_col", "—"),
-            "Add Indicator": "Yes" if entry["add_missing_indicator"] else "No",
-            "Fit On": entry["fit_on"],
-            "Reason": entry["reason"],
-        })
-    st.dataframe(pd.DataFrame(plan_rows), use_container_width=True, hide_index=True)
+st.divider()
 
-    sc = plan.get("summary", {}).get("strategy_counts", {})
-    if sc:
-        st.subheader("Strategy counts")
-        st.dataframe(
-            pd.DataFrame(
-                [{"Strategy": k, "Count": v} for k, v in sorted(sc.items(), key=lambda x: -x[1])]
-            ),
-            use_container_width=True, hide_index=True,
-        )
+# ── Section 3: Structural ─────────────────────────────────────────────────────
+st.subheader("🏗 Structural Absence")
+if struct["n_structural_pairs"] == 0:
+    st.success("No structural missingness pairs detected.")
+else:
+    st.warning(f"{struct['n_structural_pairs']} structural pair(s) detected.")
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Categorical (NA)": p["categorical_col"],
+                    "Numeric (companion)": p["numeric_col"],
+                    "Pattern": p["pattern"],
+                    "NA fraction": f"{(p.get('na_fraction_when_cat_na') or p.get('na_fraction_for_group', 0)):.1%}",
+                }
+                for p in struct["structural_pairs"]
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+_insight("structural")
 
-    with st.expander("Leakage-safe protocol"):
-        proto = leakage.get("global_protocol", {})
-        st.markdown(f"**Rule:** {proto.get('rule', '')}")
-        st.code(proto.get("sklearn_pattern", ""), language="python")
+st.divider()
 
-    # Apply imputation
-    st.divider()
-    if st.button("⚡ Apply Imputation", type="primary"):
-        with st.spinner("Applying imputation plan…"):
-            result = auditor.apply_imputation(df_train, plan, df_predict)
-            if isinstance(result, tuple):
-                st.session_state["imputed_df"], st.session_state["imputed_df_predict"] = result
-            else:
-                st.session_state["imputed_df"] = result
+# ── Section 4: Imputation Plan ────────────────────────────────────────────────
+st.subheader("📋 Imputation Plan")
 
-    if "imputed_df" in st.session_state:
-        imputed = st.session_state["imputed_df"]
-        st.success(f"Imputation complete — {imputed.shape[0]:,} rows × {imputed.shape[1]} columns")
-        st.dataframe(imputed.head(20), use_container_width=True)
+if leakage.get("high_risk_count", 0) + leakage.get("medium_risk_count", 0) > 0:
+    st.warning(
+        f"Leakage check: {leakage.get('high_risk_count', 0)} high-risk, "
+        f"{leakage.get('medium_risk_count', 0)} medium-risk finding(s)."
+    )
+else:
+    st.success("Leakage check passed — safe to proceed.")
 
-        remaining_na = imputed.isna().sum().sum()
-        if remaining_na > 0:
-            st.warning(f"{remaining_na} missing values remain (expected for drop_column or no_imputation_needed).")
+st.dataframe(
+    pd.DataFrame(
+        [
+            {
+                "Column": col,
+                "Strategy": entry["strategy"],
+                "Group By": entry.get("group_col", "—"),
+                "Add Indicator": "Yes" if entry["add_missing_indicator"] else "No",
+                "Fit On": entry["fit_on"],
+                "Reason": entry["reason"],
+            }
+            for col, entry in plan["columns"].items()
+        ]
+    ),
+    use_container_width=True,
+    hide_index=True,
+)
+
+if sc:
+    st.markdown(
+        "**Strategy counts:** "
+        + " · ".join(f"`{k}`: {v}" for k, v in sorted(sc.items(), key=lambda x: -x[1]))
+    )
+
+_insight("plan")
+
+with st.expander("Leakage-safe sklearn pattern"):
+    proto = leakage.get("global_protocol", {})
+    st.markdown(f"**Rule:** {proto.get('rule', '')}")
+    st.code(proto.get("sklearn_pattern", ""), language="python")
+
+# ── Apply Imputation ──────────────────────────────────────────────────────────
+st.divider()
+if st.button("⚡ Apply Imputation", type="primary"):
+    with st.spinner("Applying imputation plan…"):
+        result = auditor.apply_imputation(df_train, plan, df_predict)
+        if isinstance(result, tuple):
+            st.session_state["imputed_df"], st.session_state["imputed_df_predict"] = result
         else:
-            st.success("No missing values remain in imputed data.")
+            st.session_state["imputed_df"] = result
 
-        if "imputed_df_predict" in st.session_state:
-            st.subheader("Predict set (imputed)")
-            pred_imp = st.session_state["imputed_df_predict"]
-            st.dataframe(pred_imp.head(20), use_container_width=True)
+    if api_key_input and "imputed_df" in st.session_state:
+        imp = st.session_state["imputed_df"]
+        remaining = int(imp.isna().sum().sum())
+        client = anthropic.Anthropic(api_key=api_key_input)
+        st.session_state["imputation_summary"] = _claude_call(
+            client,
+            f"Imputation was applied: {imp.shape[0]} rows × {imp.shape[1]} columns, "
+            f"{remaining} NAs remain. Strategies used: {json.dumps(sc)}. "
+            "In 2 sentences, confirm what was done and flag one thing to verify before training.",
+            250,
+        )
 
-# ── Tab 5: Figures (now index 4)
-with tab_figures:
-    st.subheader("Visualizations")
-    viz = MissingnessVisualizer(df_train, target_col=target_col)
-    figs = viz.generate_figures()
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Missingness Rate by Column**")
-        st.pyplot(figs["missingness_bar"], bbox_inches="tight")
-    with c2:
-        st.markdown("**Pattern Matrix**")
-        st.pyplot(figs["missingness_matrix"], bbox_inches="tight")
-
-    st.markdown("**Target Signal by Missingness**")
-    st.pyplot(figs["missingness_target_signal"], bbox_inches="tight")
-
-    for fig in figs.values():
-        plt.close(fig)
-
-# ── Tab 6: AI Analysis
-with tab_ai:
-    st.subheader("AI-Powered Analysis")
-
-    if not api_key_input:
+if "imputed_df" in st.session_state:
+    imp = st.session_state["imputed_df"]
+    st.success(f"Imputation complete — {imp.shape[0]:,} rows × {imp.shape[1]} columns")
+    if summ := st.session_state.get("imputation_summary"):
+        st.info(f"🤖 **Claude:** {summ}")
+    st.dataframe(imp.head(20), use_container_width=True)
+    remaining = int(imp.isna().sum().sum())
+    if remaining:
         st.warning(
-            "No API key provided. Enter your Anthropic API key in the sidebar to use this feature.",
-            icon="🔑",
+            f"{remaining} missing values remain "
+            "(expected for drop_column / no_imputation_needed strategies)."
         )
     else:
-        st.caption(
-            "Claude will interpret your missingness audit, explain the mechanisms in plain English, "
-            "and recommend a concrete action plan."
-        )
+        st.success("No missing values remain.")
+    if "imputed_df_predict" in st.session_state:
+        st.subheader("Predict set (imputed)")
+        st.dataframe(st.session_state["imputed_df_predict"].head(20), use_container_width=True)
 
-        if st.button("✨ Generate AI Analysis", type="primary"):
-            # Build a structured context from audit results
-            col_profiles = []
-            for col, info in profile["columns"].items():
-                mech_info = mech["columns"].get(col, {})
-                plan_info = plan["columns"].get(col, {})
-                col_profiles.append(
-                    f"  - {col}: {info['missing_rate']:.1%} missing, severity={info['severity']}, "
-                    f"dtype={info['dtype_category']}, mechanism={mech_info.get('mechanism_label','?')}, "
-                    f"target_signal={mech_info.get('target_signal', False)}, "
-                    f"imputation_strategy={plan_info.get('strategy','?')}"
+st.divider()
+
+# ── Section 5: Visualizations ─────────────────────────────────────────────────
+st.subheader("🖼 Visualizations")
+viz = MissingnessVisualizer(df_train, target_col=target_col)
+figs = viz.generate_figures()
+col_a, col_b = st.columns(2)
+with col_a:
+    st.markdown("**Missingness Rate by Column**")
+    st.pyplot(figs["missingness_bar"], bbox_inches="tight")
+with col_b:
+    st.markdown("**Pattern Matrix**")
+    st.pyplot(figs["missingness_matrix"], bbox_inches="tight")
+st.markdown("**Target Signal by Missingness**")
+st.pyplot(figs["missingness_target_signal"], bbox_inches="tight")
+for fig in figs.values():
+    plt.close(fig)
+
+st.divider()
+
+# ── Section 6: Chat ───────────────────────────────────────────────────────────
+st.subheader("💬 Ask Claude")
+if not api_key_input:
+    st.info(
+        "Add your Anthropic API key in the sidebar to ask follow-up questions about your data.",
+        icon="🔑",
+    )
+else:
+    if "chat_history" not in st.session_state:
+        st.session_state["chat_history"] = []
+
+    ctx = _build_context(results, target_col)
+
+    for msg in st.session_state["chat_history"]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    if prompt := st.chat_input("Ask about your missing data…"):
+        st.session_state["chat_history"].append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Prepend audit context to the first user message only
+        api_messages = []
+        for i, m in enumerate(st.session_state["chat_history"]):
+            if i == 0:
+                api_messages.append(
+                    {
+                        "role": "user",
+                        "content": f"Audit context:\n{ctx}\n\n---\n{m['content']}",
+                    }
                 )
+            else:
+                api_messages.append(m)
 
-            struct_desc = (
-                f"{struct['n_structural_pairs']} structural pair(s) detected"
-                if struct["n_structural_pairs"] > 0
-                else "no structural absence pairs"
-            )
-            leakage_desc = (
-                f"{leakage.get('high_risk_count', 0)} high-risk, "
-                f"{leakage.get('medium_risk_count', 0)} medium-risk leakage finding(s)"
-            )
+        with st.chat_message("assistant"):
+            placeholder = st.empty()
+            client = anthropic.Anthropic(api_key=api_key_input)
+            try:
+                full = ""
+                with client.messages.stream(
+                    model="claude-opus-4-8",
+                    max_tokens=1024,
+                    thinking={"type": "adaptive"},
+                    messages=api_messages,
+                ) as stream:
+                    for chunk in stream.text_stream:
+                        full += chunk
+                        placeholder.markdown(full + "▌")
+                placeholder.markdown(full)
+                st.session_state["chat_history"].append(
+                    {"role": "assistant", "content": full}
+                )
+            except anthropic.AuthenticationError:
+                st.error("Invalid API key. Please check your key in the sidebar.")
+            except Exception as e:
+                st.error(f"Error: {e}")
 
-            audit_context = f"""
-Dataset: {summary['total_rows']:,} rows × {summary['total_columns']} columns
-Overall missing rate: {summary['overall_missing_rate']:.1%}
-Columns with missing data: {summary['columns_with_any_missing']} of {summary['total_columns']}
-Target column: {target_col or 'none specified'}
-Structural missingness: {struct_desc}
-Leakage check: {leakage_desc}
-
-Per-column breakdown:
-{chr(10).join(col_profiles)}
-
-Imputation strategy counts: {json.dumps(plan.get('summary', {}).get('strategy_counts', {}), indent=2)}
-""".strip()
-
-            prompt = f"""You are a senior data scientist reviewing a missing-data audit report.
-Here are the audit results for a dataset:
-
-{audit_context}
-
-Please provide:
-1. **Executive Summary** (2-3 sentences): What is the overall missingness situation and how concerning is it?
-2. **Key Findings** (bullet points): The 3-5 most important things the analyst should know.
-3. **Mechanism Interpretation**: For each column with notable missingness, explain in plain English what the mechanism label (MCAR-compatible, MAR-like, target-associated, structural) means and why it matters for modeling.
-4. **Leakage & Bias Risks**: Highlight any target-associated missingness or leakage risks and their implications.
-5. **Action Plan**: Concrete next steps the analyst should take before model training, in priority order.
-
-Be specific to the actual column names and numbers in the audit. Avoid generic advice."""
-
-            with st.spinner("Claude is analyzing your data..."):
-                try:
-                    client = anthropic.Anthropic(api_key=api_key_input)
-                    ai_output = st.empty()
-                    full_text = ""
-                    with client.messages.stream(
-                        model="claude-opus-4-8",
-                        max_tokens=4096,
-                        messages=[{"role": "user", "content": prompt}],
-                    ) as stream:
-                        for text in stream.text_stream:
-                            full_text += text
-                            ai_output.markdown(full_text + "▌")
-                    ai_output.markdown(full_text)
-                    st.session_state["ai_analysis"] = full_text
-                except anthropic.AuthenticationError:
-                    st.error("Invalid API key. Please check your Anthropic API key in the sidebar.")
-                except anthropic.APIConnectionError:
-                    st.error("Could not connect to Anthropic API. Check your internet connection.")
-                except Exception as e:
-                    st.error(f"Error calling Claude API: {e}")
-
-        elif "ai_analysis" in st.session_state:
-            st.markdown(st.session_state["ai_analysis"])
-            if st.button("🔄 Regenerate Analysis"):
-                del st.session_state["ai_analysis"]
-                st.rerun()
-
-# ─────────────────────────────── download buttons ───────────────────────────
+# ── Downloads ─────────────────────────────────────────────────────────────────
 st.divider()
 st.subheader("Downloads")
-
 rw = ReportWriter()
 report_md = rw.generate_report_md(profile, mech, struct, plan, leakage)
 
 d1, d2, d3, d4 = st.columns(4)
-
 with d1:
     st.download_button(
         "📄 Markdown report",
@@ -445,7 +574,6 @@ with d1:
         file_name="missing_data_report.md",
         mime="text/markdown",
     )
-
 with d2:
     st.download_button(
         "🗂 imputation_plan.json",
@@ -453,7 +581,6 @@ with d2:
         file_name="imputation_plan.json",
         mime="application/json",
     )
-
 with d3:
     if "imputed_df" in st.session_state:
         st.download_button(
@@ -464,7 +591,6 @@ with d3:
         )
     else:
         st.button("📊 Imputed train CSV", disabled=True, help="Apply imputation first")
-
 with d4:
     if "imputed_df_predict" in st.session_state:
         st.download_button(
@@ -474,4 +600,8 @@ with d4:
             mime="text/csv",
         )
     else:
-        st.button("📊 Imputed predict CSV", disabled=True, help="Provide predict CSV and apply imputation")
+        st.button(
+            "📊 Imputed predict CSV",
+            disabled=True,
+            help="Provide predict CSV and apply imputation",
+        )
