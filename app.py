@@ -7,6 +7,7 @@ import json
 import os
 import sys
 
+import anthropic
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -64,6 +65,21 @@ def _reset_audit() -> None:
 with st.sidebar:
     st.title("🔍 Missingness Auditor")
     st.caption("Upload a CSV or load the demo dataset to diagnose missing data.")
+
+    st.divider()
+    st.markdown("**Claude API Key**")
+    api_key_input = st.text_input(
+        "Anthropic API Key",
+        type="password",
+        placeholder="sk-ant-...",
+        help="Enter your Anthropic API key to enable AI-powered analysis.",
+        label_visibility="collapsed",
+    )
+    if api_key_input:
+        st.success("API key set ✓", icon="🔑")
+    else:
+        st.info("Add an API key to unlock the **AI Analysis** tab.", icon="ℹ️")
+    st.divider()
 
     source = st.radio("Data source", ["Upload CSV", "Use demo dataset"], index=1)
 
@@ -149,8 +165,8 @@ col3.metric("With missing", summary["columns_with_any_missing"])
 col4.metric("Overall rate", f"{summary['overall_missing_rate']:.1%}")
 
 # ── tabs
-tab_profile, tab_mech, tab_struct, tab_plan, tab_figures = st.tabs([
-    "📊 Profile", "🧩 Mechanisms", "🏗 Structural", "📋 Imputation Plan", "🖼 Figures"
+tab_profile, tab_mech, tab_struct, tab_plan, tab_figures, tab_ai = st.tabs([
+    "📊 Profile", "🧩 Mechanisms", "🏗 Structural", "📋 Imputation Plan", "🖼 Figures", "🤖 AI Analysis"
 ])
 
 # ── Tab 1: Profile
@@ -299,7 +315,7 @@ with tab_plan:
             pred_imp = st.session_state["imputed_df_predict"]
             st.dataframe(pred_imp.head(20), use_container_width=True)
 
-# ── Tab 5: Figures
+# ── Tab 5: Figures (now index 4)
 with tab_figures:
     st.subheader("Visualizations")
     viz = MissingnessVisualizer(df_train, target_col=target_col)
@@ -318,6 +334,101 @@ with tab_figures:
 
     for fig in figs.values():
         plt.close(fig)
+
+# ── Tab 6: AI Analysis
+with tab_ai:
+    st.subheader("AI-Powered Analysis")
+
+    if not api_key_input:
+        st.warning(
+            "No API key provided. Enter your Anthropic API key in the sidebar to use this feature.",
+            icon="🔑",
+        )
+    else:
+        st.caption(
+            "Claude will interpret your missingness audit, explain the mechanisms in plain English, "
+            "and recommend a concrete action plan."
+        )
+
+        if st.button("✨ Generate AI Analysis", type="primary"):
+            # Build a structured context from audit results
+            col_profiles = []
+            for col, info in profile["columns"].items():
+                mech_info = mech["columns"].get(col, {})
+                plan_info = plan["columns"].get(col, {})
+                col_profiles.append(
+                    f"  - {col}: {info['missing_rate']:.1%} missing, severity={info['severity']}, "
+                    f"dtype={info['dtype_category']}, mechanism={mech_info.get('mechanism_label','?')}, "
+                    f"target_signal={mech_info.get('target_signal', False)}, "
+                    f"imputation_strategy={plan_info.get('strategy','?')}"
+                )
+
+            struct_desc = (
+                f"{struct['n_structural_pairs']} structural pair(s) detected"
+                if struct["n_structural_pairs"] > 0
+                else "no structural absence pairs"
+            )
+            leakage_desc = (
+                f"{leakage.get('high_risk_count', 0)} high-risk, "
+                f"{leakage.get('medium_risk_count', 0)} medium-risk leakage finding(s)"
+            )
+
+            audit_context = f"""
+Dataset: {summary['total_rows']:,} rows × {summary['total_columns']} columns
+Overall missing rate: {summary['overall_missing_rate']:.1%}
+Columns with missing data: {summary['columns_with_any_missing']} of {summary['total_columns']}
+Target column: {target_col or 'none specified'}
+Structural missingness: {struct_desc}
+Leakage check: {leakage_desc}
+
+Per-column breakdown:
+{chr(10).join(col_profiles)}
+
+Imputation strategy counts: {json.dumps(plan.get('summary', {}).get('strategy_counts', {}), indent=2)}
+""".strip()
+
+            prompt = f"""You are a senior data scientist reviewing a missing-data audit report.
+Here are the audit results for a dataset:
+
+{audit_context}
+
+Please provide:
+1. **Executive Summary** (2-3 sentences): What is the overall missingness situation and how concerning is it?
+2. **Key Findings** (bullet points): The 3-5 most important things the analyst should know.
+3. **Mechanism Interpretation**: For each column with notable missingness, explain in plain English what the mechanism label (MCAR-compatible, MAR-like, target-associated, structural) means and why it matters for modeling.
+4. **Leakage & Bias Risks**: Highlight any target-associated missingness or leakage risks and their implications.
+5. **Action Plan**: Concrete next steps the analyst should take before model training, in priority order.
+
+Be specific to the actual column names and numbers in the audit. Avoid generic advice."""
+
+            with st.spinner("Claude is analyzing your data..."):
+                try:
+                    client = anthropic.Anthropic(api_key=api_key_input)
+                    ai_output = st.empty()
+                    full_text = ""
+                    with client.messages.stream(
+                        model="claude-opus-4-8",
+                        max_tokens=2048,
+                        thinking={"type": "adaptive"},
+                        messages=[{"role": "user", "content": prompt}],
+                    ) as stream:
+                        for text in stream.text_stream:
+                            full_text += text
+                            ai_output.markdown(full_text + "▌")
+                    ai_output.markdown(full_text)
+                    st.session_state["ai_analysis"] = full_text
+                except anthropic.AuthenticationError:
+                    st.error("Invalid API key. Please check your Anthropic API key in the sidebar.")
+                except anthropic.APIConnectionError:
+                    st.error("Could not connect to Anthropic API. Check your internet connection.")
+                except Exception as e:
+                    st.error(f"Error calling Claude API: {e}")
+
+        elif "ai_analysis" in st.session_state:
+            st.markdown(st.session_state["ai_analysis"])
+            if st.button("🔄 Regenerate Analysis"):
+                del st.session_state["ai_analysis"]
+                st.rerun()
 
 # ─────────────────────────────── download buttons ───────────────────────────
 st.divider()
