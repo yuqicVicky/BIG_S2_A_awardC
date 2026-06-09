@@ -408,8 +408,7 @@ Be specific to the actual column names and numbers in the audit. Avoid generic a
                     full_text = ""
                     with client.messages.stream(
                         model="claude-opus-4-8",
-                        max_tokens=2048,
-                        thinking={"type": "adaptive"},
+                        max_tokens=4096,
                         messages=[{"role": "user", "content": prompt}],
                     ) as stream:
                         for text in stream.text_stream:
