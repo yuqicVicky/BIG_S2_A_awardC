@@ -28,7 +28,7 @@ Variable convention used throughout: `df_train` (always required), `df_predict` 
 
 ### Step 1.5 — Column Semantic Analysis
 
-Run before the auditor. Read column names, dtypes, unique counts, and samples to shape the imputation strategy.
+Run before the auditor. The goal is to understand **what every column means in the real world**, not just its dtype. This understanding shapes which imputation strategy is appropriate and will be published verbatim in the final report.
 
 ```python
 col_preview = pd.DataFrame({
@@ -36,70 +36,71 @@ col_preview = pd.DataFrame({
     "n_unique":    df_train.nunique(),
     "sample":      [df_train[c].dropna().iloc[:3].tolist()
                     if df_train[c].notna().any() else [] for c in df_train.columns],
+    "min":         df_train.select_dtypes("number").min().reindex(df_train.columns),
+    "max":         df_train.select_dtypes("number").max().reindex(df_train.columns),
     "missing_pct": df_train.isna().mean().round(3),
 }).to_string()
 print(col_preview)
 ```
 
-#### A — Identify geographic / location columns
+#### A — Semantic interpretation of every column
 
-Look for columns whose names or values indicate a geographic unit:
+For **each column**, produce a one-line plain-language interpretation. Use column name, dtype, sample values, and value range together — do not match against any fixed list of abbreviations. Reason from what you observe:
 
-| Name patterns | Examples |
-|---------------|---------|
-| `state`, `state_code`, `fips`, `region` | `"CA"`, `"California"`, `"06"` |
-| `county`, `district`, `province`, `prefecture` | `"Los Angeles"` |
-| `city`, `municipality`, `town` | `"Denver"` |
-| `zip`, `zip_code`, `postal_code` | `"80203"` |
-| `lat`/`lon`, `latitude`/`longitude` | `34.05`, `-118.24` |
-| `metro_area`, `cbsa`, `msa` | `"LA Metro"` |
+- Expand abbreviations using the sample values (e.g. `"06"` or `"CA"` in a column called `st_cd` suggests a state code; `34.05` in a column with `lat` in the name suggests latitude)
+- Consider the dataset context the user described, if any
+- If a column is ambiguous, say so and list the two most plausible interpretations
 
-If any such column exists, record it as `geo_col` (prefer coarser unit — state > county > city — unless missing column is itself granular).
+Produce a **semantic table** that will be included in the final report:
 
-#### B — Identify domain-sensitive numeric columns
+| Column | Dtype | Sample Values | Inferred Meaning | Domain Tag | Notes / Ambiguity |
+|--------|-------|---------------|-----------------|------------|-------------------|
+| ...    | ...   | ...           | ...             | ...        | ...               |
 
-| Domain | Typical column name patterns | Why geography matters |
-|--------|-----------------------------|-----------------------|
-| **Weather / climate** | `temp*`, `tmax`, `tmin`, `tavg`, `precip*`, `rainfall`, `snowfall`, `humidity`, `wind_speed` | Values cluster strongly by state/region |
-| **Air quality** | `pm25`, `aqi`, `ozone`, `no2`, `co2`, `pollution_*` | Regional regulatory and geographic patterns |
-| **Agriculture** | `yield_*`, `crop_*`, `soil_*`, `irrigation_*` | Climate zones drive values |
-| **Socioeconomic** | `income`, `poverty_rate`, `unemployment`, `gdp_per_capita`, `median_rent` | State/regional variation is large |
-| **Health / demographic** | `mortality_*`, `obesity_rate`, `vaccination_rate`, `life_expectancy` | State policy and demographics vary |
+**Domain Tag** is a free-form label. Choose from examples like `geographic_identifier`, `administrative_code`, `weather_metric`, `financial_indicator`, `health_outcome`, `demographic_rate`, `binary_flag`, `free_text`, `id_or_key`, `datetime`, `model_score`, or invent a label that fits. Do not hard-code which column names belong to which domain — always reason from the data.
 
-#### C — Geo-group imputation (CONDITIONAL — not an automatic override)
+This semantic table is reproduced in the Step 4 report and in `outputs/reports/missing_data_report.md`.
 
-For a column to receive `groupwise_numeric_median_plus_indicator`, **all three conditions** must be met:
+#### B — Identify grouping columns (conditional)
 
-1. Column belongs to a domain family in Section B.
-2. A `geo_col` exists in `df_train`.
-3. Between-group variance is meaningful — the std of per-group medians is ≥15% of the column's total std:
+From the semantic table, look for columns tagged `geographic_identifier`, `administrative_code`, or any other natural grouping unit (e.g. a product category, an institution type, a time period). Do **not** assume specific column name patterns — identify them by meaning.
+
+If a candidate grouping column exists, record it as `group_col`. When multiple candidates exist, prefer the coarser grouping (e.g., region over city) unless the missing column itself is granular.
+
+For any numeric column whose real-world meaning suggests strong group-level variation (e.g. a metric that is known to differ substantially across geographic or administrative units), check whether the between-group variance condition is met:
 
 ```python
-group_medians     = df_train.groupby(geo_col)[col].median()
+group_medians     = df_train.groupby(group_col)[col].median()
 between_group_std = group_medians.std()
 total_std         = df_train[col].std()
-geo_grouping_useful = (total_std > 0) and (between_group_std / total_std >= 0.15)
+grouping_useful   = (total_std > 0) and (between_group_std / total_std >= 0.15)
 ```
+
+For a column to receive `groupwise_numeric_median_plus_indicator`, **all three conditions** must hold:
+
+1. The column's real-world meaning suggests group-level variation (from semantic analysis, not name patterns).
+2. A `group_col` exists in `df_train`.
+3. Between-group variance is meaningful (between-group std ≥15% of total std, as above).
 
 If condition 3 is **not** met, fall back to `numeric_median_plus_indicator` and record `evidence.geo_grouping_skipped_reason` in the plan.
 
-If `geo_col` is very high-cardinality (e.g. zip code with many unseen values in predict set), use the next coarser column available.
+If `group_col` is very high-cardinality (many unseen values in predict set), use the next coarser available grouping column.
 
 **Always announce the decision** to the user before Step 4:
-> *"For `[col]` (weather domain): geo-group condition met (between-group std = X% of total) — using per-`[geo_col]` median."*  
+> *"For `[col]` ([inferred meaning]): group condition met (between-group std = X% of total) — using per-`[group_col]` median."*  
 > or  
-> *"For `[col]` (weather domain): geo-group condition not met (between-group std = X% of total, threshold 15%) — falling back to global median + indicator."*
+> *"For `[col]` ([inferred meaning]): group condition not met (between-group std = X% of total, threshold 15%) — falling back to global median + indicator."*
 
-#### D — Structural relationships
+#### C — Structural relationships
 
-Look for column pairs where one column's meaning implies a value in another:
+Based on the semantic interpretation of each column, look for pairs where one column's real-world meaning implies a value constraint in another:
 
-- A numeric `_area`, `_sqft`, `_count`, or `_rate` often implies 0 when its categorical parent is absent (e.g. `garage_type = NaN → garage_area = 0`)
-- A `_flag`, `_has_*`, or binary column that is 0 for rows where a companion column is NaN suggests structural missingness
+- A measurement column that can only exist when a parent entity is present (e.g. a numeric area column that must be 0 if no corresponding facility exists)
+- A binary presence/absence flag that is 0 in rows where a companion column is NaN, suggesting the NaN encodes real-world absence rather than an error
 
 Record any such pairs for Step 2.
 
-#### E — Type guard
+#### D — Type guard
 
 Before finalising the plan, identify columns that must be excluded from imputation entirely:
 
@@ -115,7 +116,7 @@ if target_col and target_col in df_train.columns:
 for col in df_train.columns:
     if col == target_col:
         continue
-    # ID columns: name pattern or all-unique values (surrogate key)
+    # ID columns: semantic tag is id_or_key, or name pattern matches, or all-unique values
     if (re.search(r"(?i)(^id$|_id$|^id_)", col)
             or df_train[col].nunique() == len(df_train)):
         TYPE_SKIP.add(col)
@@ -133,7 +134,9 @@ Type notes (not skipped, but need correct strategy):
 | **Low-cardinality categorical** | `object` / `category` dtype, `nunique ≤ 20` | `categorical_missing_token` or `categorical_missing_token_plus_indicator` |
 
 Report to user before Step 2:
-> **Semantic summary:** `[N]` geographic columns: `[geo_col]`. `[M]` columns will use geo-group imputation: `[list]`. Type-skipped: `[list]`. Structural pairs: `[list]`.
+> **Semantic summary:** [N] columns interpreted. Grouping column identified: `[group_col]` ([inferred meaning]). [M] columns will use group-wise imputation: [list]. Type-skipped: [list]. Structural pairs: [list].
+>
+> **Column meanings:** [paste the full semantic table]
 
 ### Step 2 — Run the auditor
 
@@ -161,19 +164,30 @@ Schema reference: `references/imputation_plan_schema.md`.
 
 Surface only columns with missing values, sorted by `missing_rate` descending, max 10 rows:
 
-| Column | Missing Rate | Severity | Mechanism | Strategy | Group Col | Add Indicator | MI Upgrade? |
-|--------|-------------|----------|-----------|----------|-----------|--------------|-------------|
-| ...    | ...         | ...      | ...       | ...      | ...       | ...          | ...         |
+| Column | Inferred Meaning | Missing Rate | Severity | Mechanism | Strategy | Group Col | Add Indicator | MI Upgrade? |
+|--------|-----------------|-------------|----------|-----------|----------|-----------|--------------|-------------|
+| ...    | ...             | ...         | ...      | ...       | ...      | ...       | ...          | ...         |
 
-`Group Col` is non-empty only when `geo_grouping_applied: true` in `evidence`. Show `geo_col` name so the user can verify the grouping makes sense.
+`Inferred Meaning` comes from the semantic table built in Step 1.5 — reproduce it here verbatim so the user can verify the interpretation before acting on the plan. `Group Col` is non-empty only when `grouping_applied: true` in `evidence`; show the column name so the user can verify the grouping makes sense.
 
 ### Step 4 — Present the plan in plain language
 
+Begin with the full semantic table from Step 1.5 so the user can verify the column interpretations.
+
 For each column with missing values:
-> `[col]` — [severity] missingness ([rate]%). Mechanism clue: [mechanism_label]. Recommended: `[strategy]`[, with a missing indicator][, grouped by `[geo_col]`].
+> `[col]` (**[inferred meaning]**) — [severity] missingness ([rate]%). Mechanism clue: [mechanism_label]. Recommended: `[strategy]`[, with a missing indicator][, grouped by `[group_col]`].
+
+Follow the strategy selection rules in `references/strategies.md`. In particular:
+
+- **Statistical methods** (median, mode, missing-token) are appropriate for MCAR-compatible or lightly MAR columns with low-to-moderate missing rates and few predictive features.
+- **ML-based methods** are appropriate when missingness is MAR-heavy, the missing rate is moderate-to-high, and other features carry predictive signal for the missing column. Prefer ML imputation over statistical imputation when:
+  - Missing rate ≥10% **and** `MAR-like evidence` **and** ≥5 non-missing numeric predictors → consider `knn_imputation`
+  - Missing rate ≥25% **and** `MAR-like evidence` or `target-associated missingness` → consider `random_forest_imputation`
+  - Many features with non-linear interactions → consider `gradient_boosting_imputation`
+  - Statistical inference context → `iterative_imputer_ml` (BayesianRidge estimator)
 
 If any column has `mi_upgrade_recommended: true`:
-> **Full MI recommended for:** `[col1]`, `[col2]` — missing rate or covariate correlation exceeds Collins et al. (2001) thresholds. Median imputation is fine for ML feature engineering, but upgrade to MICE (PMM / logreg / polyreg) if this data will be used for **statistical inference or hypothesis testing** (van Buuren FIMD Ch5).
+> **Full MI recommended for:** `[col1]`, `[col2]` — missing rate or covariate correlation exceeds Collins et al. (2001) thresholds. Median imputation is fine for simple ML feature engineering, but upgrade to MICE (`IterativeImputer` with `BayesianRidge` or `RandomForestRegressor`) if this data will be used for **statistical inference or hypothesis testing** (van Buuren FIMD Ch5).
 
 ### Step 5 — Ask for confirmation
 
@@ -287,8 +301,9 @@ def agent_pre_imputation_audit(df_train, target_col):
 
 ## Key design choices
 
-- **Column semantic pre-scan (Step 1.5)** reads names/samples before the auditor, infers domain families, and checks the between-group variance condition before assigning `groupwise_numeric_median_plus_indicator`. Geographic grouping is never an automatic override.
-- **Type guard (Step 1.5 E)** removes target, ID, and datetime columns from the plan before execution.
+- **Column semantic pre-scan (Step 1.5)** reads names, dtypes, and sample values before the auditor and reasons from observed data — no hardcoded abbreviation lists. Produces a semantic table reproduced in the report. Grouping is a conditional outcome of semantic analysis, not an automatic pattern-match.
+- **Type guard (Step 1.5 D)** removes target, ID, and datetime columns from the plan before execution.
+- **Statistical + ML strategy ladder** — statistical methods (median, mode) are the baseline; ML-based methods (KNN, Random Forest, Gradient Boosting, IterativeImputer) are recommended when missing rate, feature correlation, or inference requirements justify the added complexity.
 - **Dataset-agnostic core** — no domain-specific column names hardcoded in `src/`; domain inference happens in the skill layer.
 - **Cautious mechanism language** — MCAR / MAR / MNAR are clues, not facts (van Buuren FIMD Ch1).
 - **Zero seaborn** — all figures use matplotlib only.
@@ -311,7 +326,8 @@ Validation script: `scripts/validate_imputation.py`
 
 ## After this skill completes, recommend
 
-1. **For `model_based_imputation_optional` columns:** "Shall I implement full MICE for `[col]` using `IterativeImputer`?"
-2. **For inference use cases:** "Shall I upgrade to MICE for all columns with `mi_upgrade_recommended: true`?"
-3. **For `drop_column` columns:** "I dropped `[col]` — want me to check if it can be recovered using external data or proxy features?"
-4. **General next step:** "Ready to move to feature engineering and EDA?"
+1. **For `knn_imputation` or `random_forest_imputation` columns:** "Shall I implement the ML imputer for `[col]` using `KNNImputer` / `IterativeImputer(RandomForestRegressor())`?"
+2. **For `model_based_imputation_optional` columns:** "Shall I implement full MICE for `[col]` using `IterativeImputer`?"
+3. **For inference use cases:** "Shall I upgrade to `iterative_imputer_ml` (BayesianRidge) for all columns with `mi_upgrade_recommended: true`?"
+4. **For `drop_column` columns:** "I dropped `[col]` — want me to check if it can be recovered using external data or proxy features?"
+5. **General next step:** "Ready to move to feature engineering and EDA?"

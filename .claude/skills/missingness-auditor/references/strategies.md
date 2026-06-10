@@ -2,18 +2,42 @@
 
 ## Strategy table
 
-| Strategy | When used | MICE equivalent |
-|----------|-----------|-----------------|
+### Statistical methods
+
+| Strategy | When used | sklearn / library |
+|----------|-----------|-------------------|
 | `no_imputation_needed` | Column is fully observed | — |
-| `numeric_median` | MCAR-compatible, <10% missing, numeric | PMM |
-| `numeric_median_plus_indicator` | MAR-like / target-associated / ≥10% missing, numeric | PMM + indicator |
-| `groupwise_numeric_median_plus_indicator` | Group-dependent numeric; per-group median with global fallback | MICE with group predictor |
-| `categorical_missing_token` | Categorical, <10% missing | logreg / polyreg |
-| `categorical_missing_token_plus_indicator` | Categorical, ≥10% missing or high-cardinality | logreg / polyreg + indicator |
-| `structural_zero_plus_indicator` | Structural absence — numeric companion is 0 when categorical NA | 0-fill + indicator |
-| `structural_none_token_plus_indicator` | Structural absence — categorical NA encodes real-world absence | NONE token + indicator |
+| `numeric_median` | MCAR-compatible, <10% missing, numeric, few correlated features | `SimpleImputer(strategy="median")` |
+| `numeric_median_plus_indicator` | MAR-like / target-associated / ≥10% missing, numeric | `SimpleImputer` + `MissingIndicator` |
+| `groupwise_numeric_median_plus_indicator` | Group-dependent numeric; per-group median with global fallback | `df.groupby(group_col)[col].transform("median")` |
+| `categorical_missing_token` | Categorical, <10% missing | `SimpleImputer(strategy="constant", fill_value="__MISSING__")` |
+| `categorical_missing_token_plus_indicator` | Categorical, ≥10% missing or high-cardinality | constant fill + `MissingIndicator` |
+| `structural_zero_plus_indicator` | Structural absence — numeric companion is 0 when categorical NA | `fillna(0)` + indicator |
+| `structural_none_token_plus_indicator` | Structural absence — categorical NA encodes real-world absence | `fillna("NONE")` + indicator |
 | `drop_column` | >80% missing | drop column |
-| `model_based_imputation_optional` | Complex MAR, moderate missingness — falls back to median | MICE (PMM / logreg / polyreg) |
+| `model_based_imputation_optional` | Complex MAR, moderate missingness — falls back to median if ML not requested | `IterativeImputer(BayesianRidge())` |
+
+### ML-based methods
+
+Use ML imputation when statistical methods are too coarse — i.e., when other features carry real predictive signal for the missing values and the missing rate is high enough to matter.
+
+| Strategy | When used | sklearn / library |
+|----------|-----------|-------------------|
+| `knn_imputation` | MAR-like, 10–30% missing, ≥5 numeric predictors available, moderate dataset size | `KNNImputer(n_neighbors=5)` |
+| `random_forest_imputation` | MAR-like or target-associated, ≥25% missing, many predictors, non-linear relationships expected | `IterativeImputer(RandomForestRegressor(n_estimators=100))` for numeric; `IterativeImputer(RandomForestClassifier())` for categorical |
+| `gradient_boosting_imputation` | Complex MAR with strong feature interactions; large dataset where RF is slow | `IterativeImputer(HistGradientBoostingRegressor())` — natively handles NaN so can be used as internal estimator |
+| `iterative_imputer_ml` | Statistical inference context — need unbiased estimates and valid standard errors | `IterativeImputer(BayesianRidge())` for continuous (PMM semantics); `IterativeImputer(LogisticRegression())` for binary; `IterativeImputer(RandomForestClassifier())` for multi-class |
+
+**Decision upgrade rules — when to prefer ML over statistical:**
+
+| Condition | Upgrade from | Upgrade to |
+|-----------|-------------|-----------|
+| missing_rate ≥10% **and** MAR-like **and** ≥5 numeric non-missing predictors | `numeric_median_plus_indicator` | `knn_imputation` |
+| missing_rate ≥25% **and** (MAR-like or target-associated) | `numeric_median_plus_indicator` | `random_forest_imputation` |
+| many features with strong non-linear interactions, large dataset | `random_forest_imputation` | `gradient_boosting_imputation` |
+| statistical inference / hypothesis testing context | any statistical method | `iterative_imputer_ml` (BayesianRidge) |
+
+**Leakage note for ML methods:** all ML imputers must be fitted on `df_train` only. For `KNNImputer` and `IterativeImputer`, call `.fit(df_train[feature_cols])` then `.transform(df_predict[feature_cols])`. Never fit on combined train+predict data.
 
 **Deprecated / legacy** (backward-compatible only, do not use in new plans):
 

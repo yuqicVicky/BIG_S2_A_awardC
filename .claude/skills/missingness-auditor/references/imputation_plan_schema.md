@@ -31,12 +31,24 @@ Path: `outputs/logs/imputation_plan.json`
               "structural_none_token_plus_indicator",
               "drop_column",
               "model_based_imputation_optional",
+              "knn_imputation",
+              "random_forest_imputation",
+              "gradient_boosting_imputation",
+              "iterative_imputer_ml",
               "structural_none_or_zero"
             ]
           },
           "add_missing_indicator": { "type": "boolean" },
           "missing_rate":          { "type": "number", "minimum": 0, "maximum": 1 },
           "dtype":                 { "type": "string" },
+          "inferred_meaning": {
+            "type": ["string", "null"],
+            "description": "Plain-language interpretation of what this column represents, derived from Step 1.5 semantic analysis."
+          },
+          "domain_tag": {
+            "type": ["string", "null"],
+            "description": "Domain label assigned in Step 1.5 (e.g. geographic_identifier, weather_metric, financial_indicator)."
+          },
           "group_col": {
             "type": ["string", "null"],
             "description": "Grouping column used for groupwise imputation; null otherwise."
@@ -61,6 +73,8 @@ Path: `outputs/logs/imputation_plan.json`
               "covariate_association_evidence":{ "type": ["object", "null"] },
               "group_dependency_evidence":     { "type": ["object", "null"] },
               "structural_evidence":           { "type": ["object", "null"] },
+              "grouping_applied":              { "type": "boolean" },
+              "grouping_skipped_reason":       { "type": ["string", "null"] },
               "geo_grouping_applied":          { "type": "boolean" },
               "geo_grouping_skipped_reason":   { "type": ["string", "null"] }
             }
@@ -95,11 +109,13 @@ Path: `outputs/logs/imputation_plan.json`
 
 | Field | Type | Note |
 |-------|------|------|
-| `strategy` | string enum | See `references/strategies.md` for full table |
+| `strategy` | string enum | See `references/strategies.md` for full table including ML methods |
+| `inferred_meaning` | string\|null | Plain-language column interpretation from Step 1.5 semantic analysis |
+| `domain_tag` | string\|null | Domain label (e.g. `geographic_identifier`, `weather_metric`) from Step 1.5 |
 | `add_missing_indicator` | boolean | Add `{col}_was_missing` binary feature before imputing |
 | `group_col` | string\|null | Non-null only for `groupwise_numeric_median_plus_indicator` |
-| `mi_upgrade_recommended` | boolean | Flag for full MICE upgrade (inference use cases) |
-| `evidence.geo_grouping_applied` | boolean | True only when between-group variance condition was met |
-| `evidence.geo_grouping_skipped_reason` | string\|null | Why geo grouping was not applied despite geo_col existing |
+| `mi_upgrade_recommended` | boolean | Flag for full MICE or ML imputer upgrade |
+| `evidence.grouping_applied` | boolean | True when between-group variance condition was met |
+| `evidence.grouping_skipped_reason` | string\|null | Why group imputation was not applied despite group_col existing |
 | `summary.target_col_excluded` | string\|null | Hard guard: target is never in `columns` |
 | `summary.type_skipped_columns` | array | Columns excluded due to type guard (ID, datetime) |
