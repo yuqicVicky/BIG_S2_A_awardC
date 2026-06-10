@@ -38,10 +38,15 @@ class StructuralMissingnessDetector:
 
     Pattern 3 (numeric column always missing for a specific category group value)
     is group-dependent missingness, NOT structural absence, and is excluded here.
+
+    When llm_client is provided:
+      - each structural pair gets a llm_explanation (plain English description)
+      - top-level result gets llm_summary (overall narrative)
     """
 
-    def __init__(self, df: pd.DataFrame):
+    def __init__(self, df: pd.DataFrame, *, llm_client=None):
         self.df = df
+        self.llm_client = llm_client
         self._cat_with_missing = [
             c for c in df.columns
             if not pd.api.types.is_numeric_dtype(df[c]) and df[c].isna().any()
@@ -58,11 +63,61 @@ class StructuralMissingnessDetector:
 
         self._check_cat_na_patterns(structural_pairs, column_flags, seen_pairs)
 
-        return {
+        result = {
             "structural_pairs": structural_pairs,
             "column_flags": column_flags,
             "n_structural_pairs": len(structural_pairs),
+            "llm_summary": None,
         }
+        if self.llm_client and structural_pairs:
+            self._enrich_with_llm(result)
+        return result
+
+    def _enrich_with_llm(self, result: dict) -> None:
+        """Generate plain-English explanations for each structural pair and an overall summary."""
+        from ._llm import call_llm_json
+
+        pairs = result["structural_pairs"]
+        pair_lines = []
+        for p in pairs:
+            na_frac = p.get("na_fraction_when_cat_na")
+            zero_frac = p.get("zero_fraction_when_cat_na")
+            detail = (
+                f"numeric_na_fraction={na_frac:.0%}" if na_frac is not None
+                else f"numeric_zero_fraction={zero_frac:.0%}" if zero_frac is not None
+                else ""
+            )
+            pair_lines.append(
+                f"- categorical='{p['categorical_col']}', numeric='{p['numeric_col']}', "
+                f"pattern={p['pattern']}, {detail}"
+            )
+
+        prompt = (
+            "You are explaining structural missing-data patterns to a data scientist. "
+            "For each pair below, write a plain-English explanation of what the pattern means "
+            "(e.g. 'No pool type recorded implies pool area is zero — these are structurally linked'). "
+            "Also write a one-sentence overall summary.\n\n"
+            "Pairs:\n" + "\n".join(pair_lines) + "\n\n"
+            "Return JSON with this exact shape:\n"
+            '{"pairs": [{"categorical_col": "...", "numeric_col": "...", "explanation": "..."}, ...], '
+            '"summary": "one sentence overall summary"}'
+        )
+
+        enrichments = call_llm_json(self.llm_client, prompt, max_tokens=600)
+        if not isinstance(enrichments, dict):
+            return
+
+        pair_map = {
+            (e["categorical_col"], e["numeric_col"]): e.get("explanation", "")
+            for e in (enrichments.get("pairs") or [])
+            if isinstance(e, dict)
+        }
+        for pair in result["structural_pairs"]:
+            key = (pair["categorical_col"], pair["numeric_col"])
+            if key in pair_map:
+                pair["llm_explanation"] = pair_map[key]
+
+        result["llm_summary"] = enrichments.get("summary") or None
 
     def _check_cat_na_patterns(
         self, pairs: list, flags: dict, seen_pairs: set

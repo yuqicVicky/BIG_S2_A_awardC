@@ -60,6 +60,7 @@ class ImputationPlanner:
         mechanism_audit: dict,
         structural_audit: dict,
         domain_tags: dict[str, str] | None = None,
+        llm_client=None,
     ):
         self.profile = profile
         self.mechanism_audit = mechanism_audit
@@ -67,6 +68,7 @@ class ImputationPlanner:
         # domain_tags: {col_name: domain_tag} e.g. {"temp_avg_f": "weather_metric"}
         # Produced by SKILL.md Step 1.5 semantic analysis; optional.
         self.domain_tags: dict[str, str] = domain_tags or {}
+        self.llm_client = llm_client
 
     def plan(self) -> dict:
         col_profiles = self.profile.get("columns", {})
@@ -180,6 +182,9 @@ class ImputationPlanner:
                 entry["group_col"] = group_col
             plan_result[col] = entry
 
+        if self.llm_client and plan_result:
+            self._enrich_with_llm(plan_result)
+
         return {
             "columns": plan_result,
             "summary": self._summarize(plan_result),
@@ -188,6 +193,44 @@ class ImputationPlanner:
                 "must be fitted on training data only and applied to prediction data."
             ),
         }
+
+    def _enrich_with_llm(self, plan_result: dict) -> None:
+        """Add human-readable reason and alternative strategy suggestions per column."""
+        from ._llm import call_llm_json
+
+        col_lines = []
+        for col, entry in plan_result.items():
+            if entry["strategy"] == "no_imputation_needed":
+                continue
+            col_lines.append(
+                f"- {col}: strategy={entry['strategy']}, "
+                f"mechanism={entry.get('mechanism_label', '?')}, "
+                f"missing_rate={entry.get('missing_rate', 0):.1%}, "
+                f"add_indicator={entry['add_missing_indicator']}, "
+                f"internal_reason={entry['reason']}"
+            )
+
+        if not col_lines:
+            return
+
+        prompt = (
+            "You are explaining an imputation plan to a data scientist. "
+            "For each column, write:\n"
+            "1. readable_reason: 1-2 sentences explaining in plain English WHY this strategy "
+            "   was chosen (mention the mechanism, missing rate, and what it means for the model).\n"
+            "2. alternatives: list of 1-2 alternative strategies with a brief trade-off note each.\n\n"
+            "Columns:\n" + "\n".join(col_lines) + "\n\n"
+            'Return JSON: {"col_name": {"readable_reason": "...", '
+            '"alternatives": ["alt1: trade-off", "alt2: trade-off"]}, ...}'
+        )
+
+        enrichments = call_llm_json(self.llm_client, prompt, max_tokens=1400)
+        if not isinstance(enrichments, dict):
+            return
+        for col, enrich in enrichments.items():
+            if col in plan_result and isinstance(enrich, dict):
+                plan_result[col]["llm_readable_reason"] = enrich.get("readable_reason", "")
+                plan_result[col]["llm_alternatives"] = enrich.get("alternatives", [])
 
     # Domain tags that indicate temporally-ordered continuous measurements.
     # The planner recommends time-series forward/backward fill for these when

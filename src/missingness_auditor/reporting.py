@@ -8,9 +8,10 @@ from datetime import datetime
 
 
 class ReportWriter:
-    def __init__(self, output_dir: str = "."):
+    def __init__(self, output_dir: str = ".", llm_client=None):
         self.logs_dir = os.path.join(output_dir, "logs")
         self.reports_dir = os.path.join(output_dir, "reports")
+        self.llm_client = llm_client
 
     def write_all(
         self,
@@ -43,6 +44,7 @@ class ReportWriter:
         imputation_plan: dict,
         leakage_check: dict,
     ) -> str:
+        """Generate a markdown report. Includes LLM narratives when present in results."""
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         summary = profile.get("summary", {})
         col_profiles = profile.get("columns", {})
@@ -52,6 +54,11 @@ class ReportWriter:
         protocol = leakage_check.get("global_protocol", {})
         struct_pairs = structural_audit.get("structural_pairs", [])
 
+        # LLM-generated executive narrative (only if llm_client provided)
+        llm_executive = self._generate_executive_narrative(
+            summary, col_mechanisms, struct_pairs, plan_cols
+        ) if self.llm_client else None
+
         lines = [
             "# Missing Data Report",
             "",
@@ -59,11 +66,18 @@ class ReportWriter:
             "",
             "## Overview",
             "",
-            (
+        ]
+
+        if llm_executive:
+            lines += [llm_executive, ""]
+        else:
+            lines.append(
                 "This report diagnoses missingness patterns and recommends a leakage-safe "
                 "imputation strategy for each column. Mechanism labels are statistical clues "
                 "from observational data — they do not confirm causal mechanisms."
-            ),
+            )
+
+        lines += [
             "",
             "| Metric | Value |",
             "|--------|-------|",
@@ -142,6 +156,21 @@ class ReportWriter:
             lines.append(f"- **{lbl}** ({cnt} column(s)): {desc}")
         lines.append("")
 
+        # Per-column LLM narratives (present when MechanismAuditor ran with llm_client)
+        llm_mech_cols = [
+            (col, info) for col, info in col_mechanisms.items()
+            if info.get("llm_narrative")
+        ]
+        if llm_mech_cols:
+            lines += ["### AI Interpretation", ""]
+            for col, info in llm_mech_cols:
+                lines.append(f"**`{col}`** — {info['llm_narrative']}")
+                if info.get("llm_suggestion"):
+                    lines.append(f"  *Suggestion: {info['llm_suggestion']}*")
+                if info.get("llm_anomaly"):
+                    lines.append("  ⚠️ *Complex or anomalous pattern — review carefully.*")
+                lines.append("")
+
         # ── Group-dependent missingness section
         group_dep_cols = [
             (col, info) for col, info in col_mechanisms.items()
@@ -177,26 +206,36 @@ class ReportWriter:
 
         # ── Structural absence section
         if struct_pairs:
+            llm_struct_summary = structural_audit.get("llm_summary")
             lines += [
                 "---",
                 "",
                 "## Structural Absence",
                 "",
-                (
+            ]
+            if llm_struct_summary:
+                lines += [llm_struct_summary, ""]
+            else:
+                lines += [
                     "The following column pairs show structural absence: when the categorical "
                     "column is NaN, its numeric companion is 0 or also NaN. This pattern "
                     "suggests the NaN encodes the **absence of a facility or item**, not a "
-                    "data collection error. Impute with a structural token/zero + indicator."
-                ),
-                "",
-                "| Categorical (NA) | Numeric (companion) | Pattern | Evidence |",
-                "|-----------------|---------------------|---------|----------|",
+                    "data collection error. Impute with a structural token/zero + indicator.",
+                    "",
+                ]
+            lines += [
+                "| Categorical (NA) | Numeric (companion) | Pattern | Explanation |",
+                "|-----------------|---------------------|---------|-------------|",
             ]
             for pair in struct_pairs:
-                evidence = pair.get("evidence", pair.get("pattern", "—"))
+                explanation = (
+                    pair.get("llm_explanation")
+                    or pair.get("evidence")
+                    or pair.get("pattern", "—")
+                )
                 lines.append(
                     f"| `{pair['categorical_col']}` | `{pair['numeric_col']}` "
-                    f"| {pair['pattern']} | {evidence} |"
+                    f"| {pair['pattern']} | {explanation} |"
                 )
             lines.append("")
 
@@ -218,11 +257,26 @@ class ReportWriter:
             mech_lbl = plan.get("mechanism_label", "—")
             miss_r = plan.get("missing_rate", "—")
             miss_r_str = f"{miss_r:.1%}" if isinstance(miss_r, float) else str(miss_r)
+            reason = plan.get("llm_readable_reason") or plan["reason"]
             lines.append(
                 f"| `{col}` | `{plan['strategy']}` | {ind} "
-                f"| {mech_lbl} | {miss_r_str} | {plan['reason']} |"
+                f"| {mech_lbl} | {miss_r_str} | {reason} |"
             )
         lines.append("")
+
+        # LLM alternatives
+        alt_cols = [
+            (col, plan) for col, plan in plan_cols.items()
+            if plan.get("llm_alternatives")
+        ]
+        if alt_cols:
+            lines += ["### Alternative Strategy Options", ""]
+            for col, plan in alt_cols:
+                alts = plan["llm_alternatives"]
+                lines.append(f"**`{col}`** (current: `{plan['strategy']}`):")
+                for alt in alts:
+                    lines.append(f"  - {alt}")
+                lines.append("")
 
         # Safety warnings
         warnings = [
@@ -302,6 +356,9 @@ class ReportWriter:
             if plan["strategy"] == "no_imputation_needed":
                 continue
             lines.append(f"### `{col}`")
+            if plan.get("llm_readable_reason"):
+                lines.append(f"> {plan['llm_readable_reason']}")
+                lines.append("")
             lines.append(f"- **Strategy:** `{plan['strategy']}`")
             lines.append(f"- **Missing rate:** {plan.get('missing_rate', '—'):.1%}" if isinstance(plan.get('missing_rate'), float) else f"- **Missing rate:** {plan.get('missing_rate', '—')}")
             lines.append(f"- **Mechanism label:** {plan.get('mechanism_label', '—')}")
@@ -376,6 +433,41 @@ class ReportWriter:
         ]
 
         return "\n".join(lines)
+
+    def _generate_executive_narrative(
+        self,
+        summary: dict,
+        col_mechanisms: dict,
+        struct_pairs: list,
+        plan_cols: dict,
+    ) -> str | None:
+        """Call LLM to write a 3-5 sentence executive narrative for the report overview."""
+        from ._llm import call_llm_text
+
+        mech_summary = {}
+        for col, info in col_mechanisms.items():
+            lbl = info.get("mechanism_label", "?")
+            mech_summary[lbl] = mech_summary.get(lbl, 0) + 1
+
+        strategy_counts = {}
+        for col, entry in plan_cols.items():
+            s = entry.get("strategy", "?")
+            strategy_counts[s] = strategy_counts.get(s, 0) + 1
+
+        prompt = (
+            "Write a 3-5 sentence executive narrative for a missing-data audit report. "
+            "Cover: overall data quality, the most concerning missingness mechanisms, "
+            "the imputation strategy selected, and the main risk the analyst should address. "
+            "Write in plain English for a non-expert audience.\n\n"
+            f"Dataset: {summary.get('total_rows', '?')} rows × {summary.get('total_columns', '?')} columns\n"
+            f"Overall missing rate: {summary.get('overall_missing_rate', 0):.1%}\n"
+            f"Columns with missing: {summary.get('columns_with_any_missing', 0)}\n"
+            f"Mechanism breakdown: {mech_summary}\n"
+            f"Structural pairs detected: {len(struct_pairs)}\n"
+            f"Strategy counts: {strategy_counts}"
+        )
+        text = call_llm_text(self.llm_client, prompt, max_tokens=250)
+        return text if text else None
 
     def _json(self, filename: str, data: dict) -> None:
         with open(os.path.join(self.logs_dir, filename), "w") as f:

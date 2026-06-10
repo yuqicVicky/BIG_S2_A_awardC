@@ -28,13 +28,59 @@ _CHART_METHODS: dict[str, str] = {
 
 
 class MissingnessVisualizer:
-    def __init__(self, df: pd.DataFrame, target_col: str | None = None):
+    def __init__(self, df: pd.DataFrame, target_col: str | None = None, llm_client=None):
         self.df = df
         self.target_col = target_col
+        self.llm_client = llm_client
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def suggest_charts(
+        self,
+        ctx: str,
+        has_target: bool,
+        n_missing_cols: int,
+    ) -> tuple[list[str], str]:
+        """Use LLM (if available) to choose the 2-3 most informative charts.
+
+        Falls back to a heuristic selection when llm_client is None.
+        Returns (chart_names, rationale_string).
+        """
+        available = ["missingness_bar", "pattern_matrix"]
+        if has_target:
+            available.append("target_signal")
+        if n_missing_cols >= 3:
+            available.append("missing_correlation")
+
+        if self.llm_client:
+            from ._llm import call_llm_json
+            prompt = (
+                f"Missing-data audit summary:\n{ctx}\n\n"
+                f"Available chart types: {available}\n"
+                "- missingness_bar: bar chart of missing % per column — always useful\n"
+                "- pattern_matrix: row×column heatmap of co-missingness — useful when 2+ columns missing\n"
+                "- target_signal: compare target value for rows with/without a feature — "
+                "  include if any target_signal=True\n"
+                "- missing_correlation: correlation between missingness indicators — "
+                "  useful when 3+ columns missing\n\n"
+                "Choose 2-3 charts that give the most insight for THIS specific dataset. "
+                'Return ONLY valid JSON: {"charts": ["name1", "name2"], "rationale": "brief reason"}'
+            )
+            result = call_llm_json(self.llm_client, prompt, max_tokens=200)
+            if isinstance(result, dict):
+                valid = [c for c in result.get("charts", []) if c in available]
+                if valid:
+                    return valid, result.get("rationale", "")
+
+        # Heuristic fallback
+        charts = ["missingness_bar"]
+        if n_missing_cols >= 2:
+            charts.append("pattern_matrix")
+        if has_target:
+            charts.append("target_signal")
+        return charts, ""
 
     def generate_figures(self, charts: list[str] | None = None) -> dict[str, plt.Figure]:
         """Return {name: Figure} for the requested charts. Caller is responsible for closing."""

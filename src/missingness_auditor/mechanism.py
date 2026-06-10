@@ -47,6 +47,11 @@ class MechanismAuditor:
     2. target-associated missingness (target correlation)
     3. MAR-like evidence (numeric feature correlation)
     4. MCAR-compatible (no significant correlation)
+
+    When llm_client is provided, each column gets LLM-generated fields:
+      llm_narrative   : natural language explanation of the detected mechanism
+      llm_suggestion  : imputation recommendation based on the pattern
+      llm_anomaly     : True when the pattern is complex or unusual
     """
 
     def __init__(
@@ -54,12 +59,14 @@ class MechanismAuditor:
         df: pd.DataFrame,
         *,
         target_col: str | None = None,
+        llm_client=None,
         corr_threshold_mar: float = _CORR_THRESHOLD_MAR,
         corr_threshold_target: float = _CORR_THRESHOLD_TARGET,
         group_spread_threshold: float = _GROUP_SPREAD_THRESHOLD,
     ):
         self.df = df
         self.target_col = target_col
+        self.llm_client = llm_client
         self.corr_threshold_mar = corr_threshold_mar
         self.corr_threshold_target = corr_threshold_target
         self.group_spread_threshold = group_spread_threshold
@@ -77,6 +84,8 @@ class MechanismAuditor:
     def audit(self) -> dict:
         missing_cols = [c for c in self.df.columns if self.df[c].isna().any()]
         results = {col: self._analyze(col) for col in missing_cols}
+        if self.llm_client and results:
+            self._enrich_with_llm(results)
         return {
             "columns": results,
             "note": (
@@ -86,6 +95,50 @@ class MechanismAuditor:
                 "MAR is the recommended default assumption (van Buuren FIMD Ch5)."
             ),
         }
+
+    def _enrich_with_llm(self, results: dict) -> None:
+        """Batch LLM call: natural language narrative, imputation suggestion, anomaly flag."""
+        from ._llm import call_llm_json
+
+        col_lines = []
+        for col, info in results.items():
+            miss_rate = float(self.df[col].isna().mean())
+            top_feat = (
+                info["correlated_features"][0]["feature"]
+                if info["correlated_features"] else "none"
+            )
+            top_cat = (
+                info["categorical_correlated_features"][0]["feature"]
+                if info.get("categorical_correlated_features") else "none"
+            )
+            col_lines.append(
+                f"- {col}: mechanism={info['mechanism_label']}, "
+                f"missing_rate={miss_rate:.1%}, "
+                f"target_signal={info['target_signal']}, "
+                f"top_numeric_corr={top_feat}, "
+                f"top_group_corr={top_cat}"
+            )
+
+        prompt = (
+            "You are a senior data scientist interpreting missing data mechanisms. "
+            "For each column below, provide:\n"
+            "1. narrative: 1-2 sentences explaining what the mechanism label means "
+            "   and what it implies for the downstream model.\n"
+            "2. suggestion: one concise imputation action recommendation.\n"
+            "3. anomaly: true if the pattern is complex, ambiguous, or has multiple "
+            "   overlapping signals that warrant special attention.\n\n"
+            "Columns:\n" + "\n".join(col_lines) + "\n\n"
+            'Return JSON: {"col_name": {"narrative": "...", "suggestion": "...", "anomaly": true|false}, ...}'
+        )
+
+        enrichments = call_llm_json(self.llm_client, prompt, max_tokens=1200)
+        if not isinstance(enrichments, dict):
+            return
+        for col, enrich in enrichments.items():
+            if col in results and isinstance(enrich, dict):
+                results[col]["llm_narrative"] = enrich.get("narrative", "")
+                results[col]["llm_suggestion"] = enrich.get("suggestion", "")
+                results[col]["llm_anomaly"] = bool(enrich.get("anomaly", False))
 
     def _analyze(self, col: str) -> dict:
         miss_ind = self.df[col].isna().astype(int)

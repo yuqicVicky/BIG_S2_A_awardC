@@ -20,6 +20,10 @@ class Imputer:
     then applied to both df_train and df_predict. This prevents information
     from the test/predict set from leaking into imputation parameters.
 
+    When llm_client is provided, after applying imputation the attribute
+    llm_distribution_summary is populated with a natural language before/after
+    comparison narrative.
+
     Supported strategies
     --------------------
     no_imputation_needed                     : skip
@@ -38,6 +42,10 @@ class Imputer:
     model_based_imputation_optional          : falls back to median
     """
 
+    def __init__(self, llm_client=None):
+        self.llm_client = llm_client
+        self.llm_distribution_summary: str | None = None
+
     def apply(
         self,
         df_train: pd.DataFrame,
@@ -47,6 +55,13 @@ class Imputer:
         df_train = df_train.copy()
         if df_predict is not None:
             df_predict = df_predict.copy()
+
+        # Snapshot pre-imputation series for LLM comparison
+        _pre_snap: dict[str, pd.Series] = {}
+        if self.llm_client:
+            for col, entry in imputation_plan.get("columns", {}).items():
+                if entry["strategy"] not in ("no_imputation_needed", "drop_column") and col in df_train.columns:
+                    _pre_snap[col] = df_train[col].copy()
 
         drop_cols: list[str] = []
 
@@ -145,6 +160,55 @@ class Imputer:
             if df_predict is not None:
                 df_predict = df_predict.drop(columns=drop_cols, errors="ignore")
 
+        if self.llm_client and _pre_snap:
+            self._generate_distribution_summary(_pre_snap, df_train, drop_cols)
+
         if df_predict is not None:
             return df_train, df_predict
         return df_train
+
+    def _generate_distribution_summary(
+        self,
+        pre_snap: dict[str, pd.Series],
+        df_after: pd.DataFrame,
+        dropped_cols: list[str],
+    ) -> None:
+        """Call LLM to narrate the before/after distribution changes."""
+        from ._llm import call_llm_text
+
+        col_stats = []
+        for col, before in pre_snap.items():
+            n_missing_before = int(before.isna().sum())
+            if col not in df_after.columns:
+                col_stats.append(f"- {col}: DROPPED ({n_missing_before} missing values removed)")
+                continue
+            after = df_after[col]
+            n_missing_after = int(after.isna().sum())
+            if pd.api.types.is_numeric_dtype(before):
+                col_stats.append(
+                    f"- {col} (numeric): missing {n_missing_before}→{n_missing_after}, "
+                    f"mean {before.mean():.3g}→{after.mean():.3g}, "
+                    f"std {before.std():.3g}→{after.std():.3g}, "
+                    f"median {before.median():.3g}→{after.median():.3g}"
+                )
+            else:
+                top_before = before.value_counts().head(3).to_dict()
+                top_after = after.value_counts().head(3).to_dict()
+                col_stats.append(
+                    f"- {col} (categorical): missing {n_missing_before}→{n_missing_after}, "
+                    f"top_before={top_before}, top_after={top_after}"
+                )
+
+        if dropped_cols:
+            for c in dropped_cols:
+                if c not in pre_snap:
+                    col_stats.append(f"- {c}: DROPPED (>80% missing)")
+
+        prompt = (
+            "You are reviewing imputation results. Summarize what changed in 3-5 sentences:\n"
+            "- Were distribution shapes preserved or distorted?\n"
+            "- Any columns where the fill caused a noticeable shift in mean or introduced a dominant category?\n"
+            "- Any distribution change the analyst should verify before training?\n\n"
+            "Per-column stats (before → after):\n" + "\n".join(col_stats)
+        )
+        self.llm_distribution_summary = call_llm_text(self.llm_client, prompt, max_tokens=350)

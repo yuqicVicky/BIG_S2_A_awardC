@@ -42,6 +42,7 @@ class MissingnessAuditor:
         *,
         target_col: str | None = None,
         domain_tags: dict[str, str] | None = None,
+        llm_client=None,
     ):
         self.df = df
         self.predict_df = predict_df
@@ -50,6 +51,11 @@ class MissingnessAuditor:
         # When provided, the planner uses domain-aware strategies (e.g. ffill for
         # weather/sensor/temporal columns instead of median).
         self.domain_tags = domain_tags or {}
+        # Optional Anthropic client — when provided, each sub-module enriches its
+        # results with LLM-generated narratives, suggestions, and explanations.
+        self.llm_client = llm_client
+        # Populated after apply_imputation() when llm_client is set.
+        self.llm_imputation_summary: str | None = None
 
     def run(self) -> dict:
         """Run all sub-auditors. Returns a dict of results — no disk writes."""
@@ -58,14 +64,17 @@ class MissingnessAuditor:
         ).profile()
 
         mechanism_audit = MechanismAuditor(
-            self.df, target_col=self.target_col
+            self.df, target_col=self.target_col, llm_client=self.llm_client
         ).audit()
 
-        structural_missingness = StructuralMissingnessDetector(self.df).detect()
+        structural_missingness = StructuralMissingnessDetector(
+            self.df, llm_client=self.llm_client
+        ).detect()
 
         imputation_plan = ImputationPlanner(
             profile, mechanism_audit, structural_missingness,
             domain_tags=self.domain_tags,
+            llm_client=self.llm_client,
         ).plan()
 
         leakage_safe_check = LeakageSafeImputationChecker(
@@ -86,8 +95,15 @@ class MissingnessAuditor:
         imputation_plan: dict,
         df_predict: pd.DataFrame | None = None,
     ):
-        """Apply the plan.  Returns imputed DataFrame (or tuple if predict given)."""
-        return Imputer().apply(df, imputation_plan, df_predict)
+        """Apply the plan.  Returns imputed DataFrame (or tuple if predict given).
+
+        When llm_client is set, also populates self.llm_imputation_summary with a
+        natural language before/after distribution comparison narrative.
+        """
+        imp = Imputer(llm_client=self.llm_client)
+        result = imp.apply(df, imputation_plan, df_predict)
+        self.llm_imputation_summary = imp.llm_distribution_summary
+        return result
 
     def save_outputs(self, results: dict, output_dir: str) -> None:
         """Write all JSON logs, figures, and markdown report to disk."""
@@ -95,7 +111,7 @@ class MissingnessAuditor:
         os.makedirs(os.path.join(output_dir, "figures"), exist_ok=True)
         os.makedirs(os.path.join(output_dir, "reports"), exist_ok=True)
 
-        ReportWriter(output_dir).write_all(
+        ReportWriter(output_dir, llm_client=self.llm_client).write_all(
             profile=results["missingness_profile"],
             mechanism_audit=results["mechanism_audit"],
             structural_audit=results["structural_missingness"],
