@@ -23,6 +23,73 @@ Follow these steps in order every time this skill triggers.
 - If the user pastes inline data or describes a DataFrame already in session: use that DataFrame directly.
 - If the user has a code question only (e.g. "how should I impute X?"): skip Steps 2–3, go straight to presenting the strategy table from the Imputation strategies section and the Execution template. Adapt the template to their column names.
 
+**Step 1.5 — Column Semantic Analysis (run before the auditor)**
+
+Before running the auditor, read all column names and infer their domain meaning. This shapes which imputation strategy is appropriate for each column.
+
+```python
+# Quick profile: names, dtypes, first few non-null values
+col_preview = pd.DataFrame({
+    "dtype": df.dtypes,
+    "n_unique": df.nunique(),
+    "sample": [df[c].dropna().iloc[:3].tolist() if df[c].notna().any() else [] for c in df.columns],
+    "missing_pct": df.isna().mean().round(3),
+}).to_string()
+print(col_preview)
+```
+
+Using the column names, dtypes, unique counts, and sample values, reason through the following checklist before proceeding:
+
+**A — Identify geographic / location columns**
+
+Look for columns whose names or values indicate a geographic unit:
+
+| Name patterns | Examples |
+|---------------|---------|
+| `state`, `state_code`, `fips`, `region` | `"CA"`, `"California"`, `"06"` |
+| `county`, `district`, `province`, `prefecture` | `"Los Angeles"` |
+| `city`, `municipality`, `town` | `"Denver"` |
+| `zip`, `zip_code`, `postal_code` | `"80203"` |
+| `lat` / `lon`, `latitude` / `longitude` | `34.05`, `-118.24` |
+| `metro_area`, `cbsa`, `msa` | `"LA Metro"` |
+
+If any such column exists, record it as `geo_col` (prefer coarser units — state > county > city — unless the column with missing values is itself very granular).
+
+**B — Identify domain-sensitive numeric columns**
+
+Cross-reference missing numeric columns against these domain families:
+
+| Domain | Typical column name patterns | Why geography matters |
+|--------|-----------------------------|-----------------------|
+| **Weather / climate** | `temp*`, `tmax`, `tmin`, `tavg`, `precip*`, `rainfall`, `snowfall`, `humidity`, `wind_speed`, `solar_*`, `evapotranspiration` | Values cluster strongly by state/region; state median outperforms global median |
+| **Air quality / environment** | `pm25`, `aqi`, `ozone`, `no2`, `co2`, `pollution_*` | Regional regulatory and geographic patterns |
+| **Agriculture** | `yield_*`, `crop_*`, `soil_*`, `irrigation_*` | Climate zones drive values |
+| **Socioeconomic** | `income`, `poverty_rate`, `unemployment`, `gdp_per_capita`, `median_rent` | State and regional economic variation is large |
+| **Health / demographic** | `mortality_*`, `obesity_rate`, `vaccination_rate`, `life_expectancy` | State policy and demographics vary significantly |
+
+**C — Override strategy for geo-grouped columns**
+
+For every column that is (i) missing values, (ii) belongs to a domain family above, AND (iii) a `geo_col` exists in the dataset:
+
+- Set strategy override: `groupwise_numeric_median_plus_indicator` with `group_col = geo_col`
+- Rationale: imputing a state's temperature from a national median discards known geographic signal; per-state median is a strictly better prior
+- Note this override in plain language to the user before Step 4
+
+If `geo_col` is very high-cardinality (e.g. zip code with many unseen values in predict set), fall back to county → state → region, or use the next coarser column available.
+
+**D — Infer structural relationships**
+
+Look for column pairs where one column's meaning implies a value in another:
+
+- A numeric `_area`, `_sqft`, `_count`, or `_rate` column often implies 0 when its categorical parent is absent (e.g. `garage_type = NaN → garage_area = 0`)
+- A `_flag`, `_has_*`, or binary column that equals 0 for rows where a companion column is NaN suggests structural missingness
+
+Record any such pairs for Step 2.
+
+**Report to user (inline, before the auditor runs):**
+
+> **Column semantic summary:** Found [N] geographic column(s): `[geo_col]`. Found [M] domain-sensitive column(s) with missing values that will use geographic group imputation: `[col_a]` (weather), `[col_b]` (socioeconomic). [Any structural pairs noted.]
+
 **Step 2 — Run the auditor**
 
 ```python
@@ -47,9 +114,11 @@ Read the three JSON files in this order:
 
 Surface to the user **only the columns that have missing values**, sorted by `missing_rate` descending, limited to 10 rows:
 
-| Column | Missing Rate | Severity | Mechanism | Strategy | Add Indicator | MI Upgrade? |
-|--------|-------------|----------|-----------|----------|--------------|-------------|
-| ...    | ...         | ...      | ...       | ...      | ...          | ...         |
+| Column | Missing Rate | Severity | Mechanism | Strategy | Group Col | Add Indicator | MI Upgrade? |
+|--------|-------------|----------|-----------|----------|-----------|--------------|-------------|
+| ...    | ...         | ...      | ...       | ...      | ...       | ...          | ...         |
+
+`Group Col` is populated when Step 1.5 identified a geographic column and overrode the strategy to `groupwise_numeric_median_plus_indicator`. Show the geo column name (e.g. `state`) so the user can verify the grouping makes sense.
 
 The `MI Upgrade?` column comes from `imputation_plan.json` → `columns[col].mi_upgrade_recommended`. If `true`, flag it clearly — this column warrants full MICE for inference tasks.
 
@@ -61,6 +130,8 @@ For each column with missing values, write one sentence:
 
 Example:
 > `income` — moderate missingness (32%). Mechanism clue: MAR-like evidence (correlated with `education_level`). Recommended: `numeric_median_plus_indicator`, with a missing indicator added as a binary feature.
+
+> `tmax` — low missingness (8%). Mechanism clue: MCAR-compatible. Recommended: `groupwise_numeric_median_plus_indicator` grouped by `state` — temperature varies strongly by state, so per-state median is a better prior than the national median. Missing indicator added.
 
 If any column has `mi_upgrade_recommended: true`, add a separate warning block:
 
@@ -412,7 +483,8 @@ def agent_pre_imputation_audit(df, target_col):
 
 ## Key design choices
 
-- **Dataset-agnostic** — no domain-specific column names are hardcoded in `src/`.
+- **Column semantic pre-scan** — Step 1.5 reads column names and sample values before running the auditor, infers domain families (weather, socioeconomic, agricultural, etc.), and detects geographic grouping columns. This overrides strategy to `groupwise_numeric_median_plus_indicator` for domain-sensitive columns when a geo column exists, because geographic structure is a stronger prior than a global median.
+- **Dataset-agnostic core** — no domain-specific column names are hardcoded in `src/`; domain inference happens in the skill layer (Step 1.5) not in the auditor code.
 - **Cautious mechanism language** — MCAR / MAR / MNAR are clues, not facts.
 - **Zero seaborn** — all figures use matplotlib only.
 - **Composable** — each sub-auditor can be used standalone without `MissingnessAuditor`.
