@@ -61,6 +61,7 @@ def _reset() -> None:
         "chat_history", "imputation_summary",
         "chart_list", "chart_rationale", "domain_tags",
         "playground_df", "playground_strategies",
+        "last_applied_source",
     ]:
         st.session_state.pop(key, None)
 
@@ -554,7 +555,7 @@ if run_btn and df_train is not None:
     )
     for k in ("imputed_df", "imputed_df_predict", "ai_sections",
                "chat_history", "imputation_summary", "chart_list", "chart_rationale",
-               "playground_df", "playground_strategies"):
+               "playground_df", "playground_strategies", "last_applied_source"):
         st.session_state.pop(k, None)
 
 # ────────────────────────────────────────────── landing page ─────────────────
@@ -685,423 +686,427 @@ c4.metric("Overall rate", f"{summary['overall_missing_rate']:.1%}")
 
 _insight("overview", "Overall Assessment")
 
-st.divider()
+# ─── Main tabs ────────────────────────────────────────────────────────────────
+tab_audit, tab_impute, tab_viz, tab_chat = st.tabs([
+    "📊 Audit",
+    "📋 Imputation",
+    "🖼 Visualizations",
+    "💬 Ask Claude",
+])
 
-# ── Section 1: Profile ────────────────────────────────────────────────────────
-st.subheader("📊 Missingness Profile")
-st.dataframe(
-    pd.DataFrame(
-        [
-            {
-                "Column": col,
-                "Missing Rate": f"{info['missing_rate']:.1%}",
-                "Severity": info["severity"],
-                "Dtype": info["dtype_category"],
-                "Is Target": "✓" if info.get("is_target") else "",
-            }
-            for col, info in profile["columns"].items()
-        ]
-    ),
-    use_container_width=True,
-    hide_index=True,
-)
-_insight("profile", "Profile Interpretation")
-
-if profile.get("predict_missing_rates"):
-    st.markdown("**Predict-set missing rates**")
-    st.dataframe(
-        pd.DataFrame(
-            [
-                {"Column": c, "Predict Missing Rate": f"{r:.1%}"}
-                for c, r in profile["predict_missing_rates"].items()
-            ]
-        ),
-        use_container_width=True,
-        hide_index=True,
-    )
-
-st.divider()
-
-# ── Section 2: Mechanisms ─────────────────────────────────────────────────────
-st.subheader("🧩 Missingness Mechanisms")
-st.caption(
-    "MCAR-compatible: no detectable correlation. "
-    "MAR-like: correlated with other observed features. "
-    "Target-associated: correlated with the outcome — bias risk. "
-    "Structural absence: driven by categorical group membership."
-)
-st.dataframe(
-    pd.DataFrame(
-        [
-            {
-                "Column": col,
-                "Mechanism": info["mechanism_label"],
-                "Target Signal": "Yes" if info.get("target_signal") else "No",
-                "Target Corr": (
-                    f"{info['target_correlation']:.3f}"
-                    if info.get("target_correlation") is not None
-                    else "—"
-                ),
-                "Top Correlated": (
-                    info["correlated_features"][0]["feature"]
-                    if info.get("correlated_features")
-                    else "—"
-                ),
-            }
-            for col, info in mech["columns"].items()
-        ]
-    ),
-    use_container_width=True,
-    hide_index=True,
-)
-_insight("mechanisms", "Mechanism Interpretation")
-
-st.divider()
-
-# ── Section 3: Structural (only shown when pairs are detected) ────────────────
-if struct["n_structural_pairs"] > 0:
-    st.subheader("🏗 Structural Absence")
-    st.warning(f"{struct['n_structural_pairs']} structural pair(s) detected.")
+# ── Tab 1: Audit ──────────────────────────────────────────────────────────────
+with tab_audit:
+    st.subheader("📊 Missingness Profile")
     st.dataframe(
         pd.DataFrame(
             [
                 {
-                    "Categorical (NA)": p["categorical_col"],
-                    "Numeric (companion)": p["numeric_col"],
-                    "Pattern": p["pattern"],
-                    "NA fraction": f"{(p.get('na_fraction_when_cat_na') or p.get('na_fraction_for_group', 0)):.1%}",
+                    "Column": col,
+                    "Missing Rate": f"{info['missing_rate']:.1%}",
+                    "Severity": info["severity"],
+                    "Dtype": info["dtype_category"],
+                    "Is Target": "✓" if info.get("is_target") else "",
                 }
-                for p in struct["structural_pairs"]
+                for col, info in profile["columns"].items()
             ]
         ),
         use_container_width=True,
         hide_index=True,
     )
-    _insight("structural", "Structural Pattern Analysis")
+    _insight("profile", "Profile Interpretation")
+
+    if profile.get("predict_missing_rates"):
+        st.markdown("**Predict-set missing rates**")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"Column": c, "Predict Missing Rate": f"{r:.1%}"}
+                    for c, r in profile["predict_missing_rates"].items()
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
     st.divider()
 
-# ── Section 4: Imputation Plan ────────────────────────────────────────────────
-st.subheader("📋 Imputation Plan")
-
-if leakage.get("high_risk_count", 0) + leakage.get("medium_risk_count", 0) > 0:
-    st.warning(
-        f"Leakage check: {leakage.get('high_risk_count', 0)} high-risk, "
-        f"{leakage.get('medium_risk_count', 0)} medium-risk finding(s)."
+    st.subheader("🧩 Missingness Mechanisms")
+    st.caption(
+        "MCAR-compatible: no detectable correlation. "
+        "MAR-like: correlated with other observed features. "
+        "Target-associated: correlated with the outcome — bias risk. "
+        "Structural absence: driven by categorical group membership."
     )
-else:
-    st.success("Leakage check passed — safe to proceed.")
-
-st.dataframe(
-    pd.DataFrame(
-        [
-            {
-                "Column": col,
-                "Strategy": entry["strategy"],
-                "Group By": entry.get("group_col", "—"),
-                "Add Indicator": "Yes" if entry["add_missing_indicator"] else "No",
-                "Fit On": entry["fit_on"],
-                "Reason": entry["reason"],
-            }
-            for col, entry in plan["columns"].items()
-        ]
-    ),
-    use_container_width=True,
-    hide_index=True,
-)
-
-if sc:
-    st.markdown(
-        "**Strategy counts:** "
-        + " · ".join(f"`{k}`: {v}" for k, v in sorted(sc.items(), key=lambda x: -x[1]))
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Column": col,
+                    "Mechanism": info["mechanism_label"],
+                    "Target Signal": "Yes" if info.get("target_signal") else "No",
+                    "Target Corr": (
+                        f"{info['target_correlation']:.3f}"
+                        if info.get("target_correlation") is not None
+                        else "—"
+                    ),
+                    "Top Correlated": (
+                        info["correlated_features"][0]["feature"]
+                        if info.get("correlated_features")
+                        else "—"
+                    ),
+                }
+                for col, info in mech["columns"].items()
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
     )
+    _insight("mechanisms", "Mechanism Interpretation")
 
-_insight("plan", "Plan Evaluation")
-
-with st.expander("Leakage-safe sklearn pattern"):
-    proto = leakage.get("global_protocol", {})
-    st.markdown(f"**Rule:** {proto.get('rule', '')}")
-    st.code(proto.get("sklearn_pattern", ""), language="python")
-
-# ── Apply Imputation ──────────────────────────────────────────────────────────
-st.divider()
-if st.button("⚡ Apply Imputation", type="primary"):
-    with st.spinner("Applying imputation plan…"):
-        result = auditor.apply_imputation(df_train, plan, df_predict)
-        if isinstance(result, tuple):
-            st.session_state["imputed_df"], st.session_state["imputed_df_predict"] = result
-        else:
-            st.session_state["imputed_df"] = result
-
-    if api_key_input and "imputed_df" in st.session_state:
-        imp = st.session_state["imputed_df"]
-        remaining = int(imp.isna().sum().sum())
-        client = anthropic.Anthropic(api_key=api_key_input)
-        raw = _claude_structured(
-            client,
-            f"Imputation was applied: {imp.shape[0]} rows × {imp.shape[1]} columns, "
-            f"{remaining} NAs remain. Strategies used: {json.dumps(sc)}. "
-            "Confirm what was done and flag one thing to verify before training.",
-            400,
+    if struct["n_structural_pairs"] > 0:
+        st.divider()
+        st.subheader("🏗 Structural Absence")
+        st.warning(f"{struct['n_structural_pairs']} structural pair(s) detected.")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Categorical (NA)": p["categorical_col"],
+                        "Numeric (companion)": p["numeric_col"],
+                        "Pattern": p["pattern"],
+                        "NA fraction": f"{(p.get('na_fraction_when_cat_na') or p.get('na_fraction_for_group', 0)):.1%}",
+                    }
+                    for p in struct["structural_pairs"]
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
         )
-        st.session_state["imputation_summary"] = raw
+        _insight("structural", "Structural Pattern Analysis")
 
-if "imputed_df" in st.session_state:
-    imp = st.session_state["imputed_df"]
-    st.success(f"Imputation complete — {imp.shape[0]:,} rows × {imp.shape[1]} columns")
-    if summ := st.session_state.get("imputation_summary"):
-        _render_insight(summ, "Post-Imputation Check")
-    remaining = int(imp.isna().sum().sum())
-    if remaining:
+# ── Tab 2: Imputation ─────────────────────────────────────────────────────────
+with tab_impute:
+    # Plan summary (read-only)
+    if leakage.get("high_risk_count", 0) + leakage.get("medium_risk_count", 0) > 0:
         st.warning(
-            f"{remaining} missing values remain "
-            "(expected for drop_column / no_imputation_needed strategies)."
+            f"Leakage check: {leakage.get('high_risk_count', 0)} high-risk, "
+            f"{leakage.get('medium_risk_count', 0)} medium-risk finding(s)."
         )
     else:
-        st.success("No missing values remain.")
+        st.success("Leakage check passed — safe to proceed.")
 
-    _render_before_after_section(df_train, imp, profile, target_col)
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Column": col,
+                    "Strategy": entry["strategy"],
+                    "Group By": entry.get("group_col", "—"),
+                    "Add Indicator": "Yes" if entry["add_missing_indicator"] else "No",
+                    "Fit On": entry["fit_on"],
+                    "Reason": entry["reason"],
+                }
+                for col, entry in plan["columns"].items()
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
 
-    with st.expander("View imputed data (first 20 rows)"):
-        st.dataframe(imp.head(20), use_container_width=True)
-    if "imputed_df_predict" in st.session_state:
-        with st.expander("Predict set (imputed, first 20 rows)"):
-            st.dataframe(st.session_state["imputed_df_predict"].head(20), use_container_width=True)
+    if sc:
+        st.markdown(
+            "**Strategy counts:** "
+            + " · ".join(f"`{k}`: {v}" for k, v in sorted(sc.items(), key=lambda x: -x[1]))
+        )
 
-st.divider()
+    _insight("plan", "Plan Evaluation")
 
-# ── Strategy Playground ───────────────────────────────────────────────────────
-st.subheader("🎮 Strategy Playground")
-st.caption(
-    "Each column shows its AI-recommended strategy. Override any column, "
-    "then click **Apply Selected Strategies** to see the before vs. after immediately."
-)
+    with st.expander("Leakage-safe sklearn pattern"):
+        proto = leakage.get("global_protocol", {})
+        st.markdown(f"**Rule:** {proto.get('rule', '')}")
+        st.code(proto.get("sklearn_pattern", ""), language="python")
 
-_missing_cols_pg = [
-    col for col in df_train.columns
-    if col != target_col and df_train[col].isna().any()
-]
-
-if not _missing_cols_pg:
-    st.info("No columns with missing values — nothing to impute.")
-else:
-    _NUMERIC_OPTS = [
-        "recommended",
-        "mean",
-        "median",
-        "KNN  (k=5)",
-        "MICE  (IterativeImputer)",
-        "groupwise median",
-        "drop column",
-    ]
-    _CAT_OPTS = [
-        "recommended",
-        "MISSING token",
-        "mode fill",
-        "drop column",
-    ]
-
-    _pg_strategies: dict[str, tuple[str, str, str | None]] = {}
-
-    header_cols = st.columns([2, 3, 3])
-    header_cols[0].markdown("**Column**")
-    header_cols[1].markdown("**AI Recommendation**")
-    header_cols[2].markdown("**Your Choice**")
     st.divider()
 
-    for _col in _missing_cols_pg:
-        _col_info = profile["columns"].get(_col, {})
-        _dtype_cat = _col_info.get("dtype_category", "numeric")
-        _plan_entry = plan["columns"].get(_col, {})
-        _rec = _plan_entry.get("strategy", "numeric_median")
-        _group_col = _plan_entry.get("group_col")
-
-        _opts = _NUMERIC_OPTS if _dtype_cat == "numeric" else _CAT_OPTS
-
-        _c1, _c2, _c3 = st.columns([2, 3, 3])
-        with _c1:
-            _miss_pct = df_train[_col].isna().mean()
-            st.markdown(f"**{_col}**")
-            st.caption(f"{_dtype_cat} · {_miss_pct:.1%} missing")
-        with _c2:
-            st.code(_rec, language=None)
-            if _group_col:
-                st.caption(f"group by `{_group_col}`")
-        with _c3:
-            _choice = st.selectbox(
-                f"Strategy — {_col}",
-                _opts,
-                key=f"pg_{_col}",
-                label_visibility="collapsed",
-            )
-        _pg_strategies[_col] = (_choice, _dtype_cat, _group_col)
-
-    if st.button("🔬 Apply Selected Strategies", type="primary"):
-        with st.spinner("Applying custom strategies…"):
-            _df_pg = df_train.copy()
-            _drop_pg: list[str] = []
-
-            for _col, (_choice, _dtype_cat, _group_col) in _pg_strategies.items():
-                if _choice == "recommended":
-                    _rec_strat = _PLAN_TO_PLAYGROUND.get(
-                        plan["columns"].get(_col, {}).get("strategy", "numeric_median"),
-                        "median",
-                    )
-                    _strat_key = _rec_strat
-                elif _choice == "drop column":
-                    _drop_pg.append(_col)
-                    continue
-                else:
-                    _strat_key = {
-                        "mean":                   "mean",
-                        "median":                 "median",
-                        "KNN  (k=5)":             "knn",
-                        "MICE  (IterativeImputer)": "mice",
-                        "groupwise median":        "groupwise_median",
-                        "MISSING token":           "missing_token",
-                        "mode fill":               "mode",
-                    }.get(_choice, "median")
-
-                _filled, _dropped = _apply_playground_impute(_df_pg, _col, _strat_key, _group_col)
-                if _dropped:
-                    _drop_pg.append(_col)
-                elif _filled is not None:
-                    _df_pg[_col] = _filled
-
-            if _drop_pg:
-                _df_pg = _df_pg.drop(columns=_drop_pg, errors="ignore")
-
-            st.session_state["playground_df"] = _df_pg
-            st.session_state["playground_strategies"] = {
-                col: vals[0] for col, vals in _pg_strategies.items()
-            }
-
-if "playground_df" in st.session_state:
-    _render_before_after_section(
-        df_train,
-        st.session_state["playground_df"],
-        profile,
-        target_col,
-        label="📊 Strategy Playground — Before vs After",
+    # Strategy override (replaces separate playground section)
+    st.subheader("🎮 Strategy Override")
+    st.caption(
+        "Leave dropdowns at **recommended** to use the plan above, or override per column. "
+        "**Apply Recommended Plan** runs the full auditor pipeline; "
+        "**Apply Custom** applies your overrides."
     )
-    _remain_pg = int(st.session_state["playground_df"].isna().sum().sum())
-    if _remain_pg:
-        st.warning(f"{_remain_pg} missing values remain after custom strategies.")
+
+    _missing_cols_pg = [
+        col for col in df_train.columns
+        if col != target_col and df_train[col].isna().any()
+    ]
+
+    if not _missing_cols_pg:
+        st.info("No columns with missing values — nothing to impute.")
     else:
-        st.success("No missing values remain with your selected strategies.")
-    with st.expander("View playground result (first 20 rows)"):
-        st.dataframe(st.session_state["playground_df"].head(20), use_container_width=True)
+        _NUMERIC_OPTS = [
+            "recommended",
+            "mean",
+            "median",
+            "KNN  (k=5)",
+            "MICE  (IterativeImputer)",
+            "groupwise median",
+            "drop column",
+        ]
+        _CAT_OPTS = [
+            "recommended",
+            "MISSING token",
+            "mode fill",
+            "drop column",
+        ]
 
-st.divider()
+        _pg_strategies: dict[str, tuple[str, str, str | None]] = {}
 
-# ── Section 5: Visualizations (LLM-planned) ───────────────────────────────────
-st.subheader("🖼 Visualizations")
+        header_cols = st.columns([2, 3, 3])
+        header_cols[0].markdown("**Column**")
+        header_cols[1].markdown("**AI Recommendation**")
+        header_cols[2].markdown("**Your Choice**")
+        st.divider()
 
-chart_list: list[str] = st.session_state.get("chart_list", [])
-chart_rationale: str = st.session_state.get("chart_rationale", "")
+        for _col in _missing_cols_pg:
+            _col_info = profile["columns"].get(_col, {})
+            _dtype_cat = _col_info.get("dtype_category", "numeric")
+            _plan_entry = plan["columns"].get(_col, {})
+            _rec = _plan_entry.get("strategy", "numeric_median")
+            _group_col = _plan_entry.get("group_col")
 
-# Fallback when no API key (or chart planning failed)
-if not chart_list:
-    n_mc = sum(1 for c in df_train.columns if df_train[c].isna().any())
-    chart_list = ["missingness_bar"]
-    if n_mc >= 2:
-        chart_list.append("pattern_matrix")
-    if target_col:
-        chart_list.append("target_signal")
+            _opts = _NUMERIC_OPTS if _dtype_cat == "numeric" else _CAT_OPTS
 
-if chart_rationale:
-    st.caption(f"🤖 _Claude selected these charts: {chart_rationale}_")
+            _c1, _c2, _c3 = st.columns([2, 3, 3])
+            with _c1:
+                _miss_pct = df_train[_col].isna().mean()
+                st.markdown(f"**{_col}**")
+                st.caption(f"{_dtype_cat} · {_miss_pct:.1%} missing")
+            with _c2:
+                st.code(_rec, language=None)
+                if _group_col:
+                    st.caption(f"group by `{_group_col}`")
+            with _c3:
+                _choice = st.selectbox(
+                    f"Strategy — {_col}",
+                    _opts,
+                    key=f"pg_{_col}",
+                    label_visibility="collapsed",
+                )
+            _pg_strategies[_col] = (_choice, _dtype_cat, _group_col)
 
-viz = MissingnessVisualizer(df_train, target_col=target_col)
-figs = viz.generate_figures(charts=chart_list)
-items = list(figs.items())
+        _btn1, _btn2 = st.columns(2)
+        with _btn1:
+            _apply_rec = st.button("⚡ Apply Recommended Plan", type="primary", use_container_width=True)
+        with _btn2:
+            _apply_custom = st.button("🔬 Apply Custom Strategies", use_container_width=True)
 
-if len(items) == 1:
-    name, fig = items[0]
-    st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
-    st.pyplot(fig, bbox_inches="tight")
-elif len(items) == 2:
-    col_a, col_b = st.columns(2)
-    for col, (name, fig) in zip([col_a, col_b], items):
-        with col:
-            st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
-            st.pyplot(fig, bbox_inches="tight")
-else:
-    col_a, col_b = st.columns(2)
-    with col_a:
+        if _apply_rec:
+            with st.spinner("Applying imputation plan…"):
+                result = auditor.apply_imputation(df_train, plan, df_predict)
+                if isinstance(result, tuple):
+                    st.session_state["imputed_df"], st.session_state["imputed_df_predict"] = result
+                else:
+                    st.session_state["imputed_df"] = result
+            st.session_state["last_applied_source"] = "plan"
+
+            if api_key_input:
+                imp = st.session_state["imputed_df"]
+                remaining = int(imp.isna().sum().sum())
+                client = anthropic.Anthropic(api_key=api_key_input)
+                raw = _claude_structured(
+                    client,
+                    f"Imputation was applied: {imp.shape[0]} rows × {imp.shape[1]} columns, "
+                    f"{remaining} NAs remain. Strategies used: {json.dumps(sc)}. "
+                    "Confirm what was done and flag one thing to verify before training.",
+                    400,
+                )
+                st.session_state["imputation_summary"] = raw
+
+        if _apply_custom:
+            with st.spinner("Applying custom strategies…"):
+                _df_pg = df_train.copy()
+                _drop_pg: list[str] = []
+
+                for _col, (_choice, _dtype_cat, _group_col) in _pg_strategies.items():
+                    if _choice == "recommended":
+                        _rec_strat = _PLAN_TO_PLAYGROUND.get(
+                            plan["columns"].get(_col, {}).get("strategy", "numeric_median"),
+                            "median",
+                        )
+                        _strat_key = _rec_strat
+                    elif _choice == "drop column":
+                        _drop_pg.append(_col)
+                        continue
+                    else:
+                        _strat_key = {
+                            "mean":                        "mean",
+                            "median":                      "median",
+                            "KNN  (k=5)":                  "knn",
+                            "MICE  (IterativeImputer)":    "mice",
+                            "groupwise median":            "groupwise_median",
+                            "MISSING token":               "missing_token",
+                            "mode fill":                   "mode",
+                        }.get(_choice, "median")
+
+                    _filled, _dropped = _apply_playground_impute(_df_pg, _col, _strat_key, _group_col)
+                    if _dropped:
+                        _drop_pg.append(_col)
+                    elif _filled is not None:
+                        _df_pg[_col] = _filled
+
+                if _drop_pg:
+                    _df_pg = _df_pg.drop(columns=_drop_pg, errors="ignore")
+
+                st.session_state["playground_df"] = _df_pg
+                st.session_state["playground_strategies"] = {
+                    col: vals[0] for col, vals in _pg_strategies.items()
+                }
+            st.session_state["last_applied_source"] = "playground"
+
+    # Unified before/after — shows result of whichever apply was last run
+    _last_source = st.session_state.get("last_applied_source")
+    if _last_source == "plan" and "imputed_df" in st.session_state:
+        st.divider()
+        imp = st.session_state["imputed_df"]
+        st.success(f"Imputation complete — {imp.shape[0]:,} rows × {imp.shape[1]} columns")
+        if summ := st.session_state.get("imputation_summary"):
+            _render_insight(summ, "Post-Imputation Check")
+        remaining = int(imp.isna().sum().sum())
+        if remaining:
+            st.warning(
+                f"{remaining} missing values remain "
+                "(expected for drop_column / no_imputation_needed strategies)."
+            )
+        else:
+            st.success("No missing values remain.")
+        _render_before_after_section(df_train, imp, profile, target_col)
+        with st.expander("View imputed data (first 20 rows)"):
+            st.dataframe(imp.head(20), use_container_width=True)
+        if "imputed_df_predict" in st.session_state:
+            with st.expander("Predict set (imputed, first 20 rows)"):
+                st.dataframe(st.session_state["imputed_df_predict"].head(20), use_container_width=True)
+
+    elif _last_source == "playground" and "playground_df" in st.session_state:
+        st.divider()
+        _pg_df = st.session_state["playground_df"]
+        _render_before_after_section(
+            df_train, _pg_df, profile, target_col,
+            label="📊 Custom Strategies — Before vs After",
+        )
+        _remain_pg = int(_pg_df.isna().sum().sum())
+        if _remain_pg:
+            st.warning(f"{_remain_pg} missing values remain after custom strategies.")
+        else:
+            st.success("No missing values remain with your selected strategies.")
+        with st.expander("View result (first 20 rows)"):
+            st.dataframe(_pg_df.head(20), use_container_width=True)
+
+# ── Tab 3: Visualizations ──────────────────────────────────────────────────────
+with tab_viz:
+    chart_list: list[str] = st.session_state.get("chart_list", [])
+    chart_rationale: str = st.session_state.get("chart_rationale", "")
+
+    if not chart_list:
+        n_mc = sum(1 for c in df_train.columns if df_train[c].isna().any())
+        chart_list = ["missingness_bar"]
+        if n_mc >= 2:
+            chart_list.append("pattern_matrix")
+        if target_col:
+            chart_list.append("target_signal")
+
+    if chart_rationale:
+        st.caption(f"🤖 _Claude selected these charts: {chart_rationale}_")
+
+    viz = MissingnessVisualizer(df_train, target_col=target_col)
+    figs = viz.generate_figures(charts=chart_list)
+    items = list(figs.items())
+
+    if len(items) == 1:
         name, fig = items[0]
         st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
         st.pyplot(fig, bbox_inches="tight")
-    with col_b:
-        name, fig = items[1]
-        st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
-        st.pyplot(fig, bbox_inches="tight")
-    for name, fig in items[2:]:
-        st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
-        st.pyplot(fig, bbox_inches="tight")
+    elif len(items) == 2:
+        col_a, col_b = st.columns(2)
+        for col, (name, fig) in zip([col_a, col_b], items):
+            with col:
+                st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
+                st.pyplot(fig, bbox_inches="tight")
+    else:
+        col_a, col_b = st.columns(2)
+        with col_a:
+            name, fig = items[0]
+            st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
+            st.pyplot(fig, bbox_inches="tight")
+        with col_b:
+            name, fig = items[1]
+            st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
+            st.pyplot(fig, bbox_inches="tight")
+        for name, fig in items[2:]:
+            st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
+            st.pyplot(fig, bbox_inches="tight")
 
-for fig in figs.values():
-    plt.close(fig)
+    for fig in figs.values():
+        plt.close(fig)
 
-st.divider()
+# ── Tab 4: Ask Claude ──────────────────────────────────────────────────────────
+with tab_chat:
+    if not api_key_input:
+        st.info(
+            "Add your Anthropic API key in the sidebar to ask follow-up questions about your data.",
+            icon="🔑",
+        )
+    else:
+        if "chat_history" not in st.session_state:
+            st.session_state["chat_history"] = []
 
-# ── Section 6: Chat ───────────────────────────────────────────────────────────
-st.subheader("💬 Ask Claude")
-if not api_key_input:
-    st.info(
-        "Add your Anthropic API key in the sidebar to ask follow-up questions about your data.",
-        icon="🔑",
-    )
-else:
-    if "chat_history" not in st.session_state:
-        st.session_state["chat_history"] = []
+        ctx = _build_context(results, target_col)
 
-    ctx = _build_context(results, target_col)
+        for msg in st.session_state["chat_history"]:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-    for msg in st.session_state["chat_history"]:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+        if prompt := st.chat_input("Ask about your missing data…"):
+            st.session_state["chat_history"].append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-    if prompt := st.chat_input("Ask about your missing data…"):
-        st.session_state["chat_history"].append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+            api_messages = []
+            for i, m in enumerate(st.session_state["chat_history"]):
+                if i == 0:
+                    api_messages.append(
+                        {
+                            "role": "user",
+                            "content": f"Audit context:\n{ctx}\n\n---\n{m['content']}",
+                        }
+                    )
+                else:
+                    api_messages.append(m)
 
-        api_messages = []
-        for i, m in enumerate(st.session_state["chat_history"]):
-            if i == 0:
-                api_messages.append(
-                    {
-                        "role": "user",
-                        "content": f"Audit context:\n{ctx}\n\n---\n{m['content']}",
-                    }
-                )
-            else:
-                api_messages.append(m)
+            with st.chat_message("assistant"):
+                placeholder = st.empty()
+                client = anthropic.Anthropic(api_key=api_key_input)
+                try:
+                    full = ""
+                    with client.messages.stream(
+                        model="claude-opus-4-8",
+                        max_tokens=1024,
+                        thinking={"type": "adaptive"},
+                        messages=api_messages,
+                    ) as stream:
+                        for chunk in stream.text_stream:
+                            full += chunk
+                            placeholder.markdown(full + "▌")
+                    placeholder.markdown(full)
+                    st.session_state["chat_history"].append(
+                        {"role": "assistant", "content": full}
+                    )
+                except anthropic.AuthenticationError:
+                    st.error("Invalid API key. Please check your key in the sidebar.")
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
-        with st.chat_message("assistant"):
-            placeholder = st.empty()
-            client = anthropic.Anthropic(api_key=api_key_input)
-            try:
-                full = ""
-                with client.messages.stream(
-                    model="claude-opus-4-8",
-                    max_tokens=1024,
-                    thinking={"type": "adaptive"},
-                    messages=api_messages,
-                ) as stream:
-                    for chunk in stream.text_stream:
-                        full += chunk
-                        placeholder.markdown(full + "▌")
-                placeholder.markdown(full)
-                st.session_state["chat_history"].append(
-                    {"role": "assistant", "content": full}
-                )
-            except anthropic.AuthenticationError:
-                st.error("Invalid API key. Please check your key in the sidebar.")
-            except Exception as e:
-                st.error(f"Error: {e}")
-
-# ── Downloads ─────────────────────────────────────────────────────────────────
+# ── Downloads (outside tabs) ───────────────────────────────────────────────────
 st.divider()
 st.subheader("Downloads")
 rw = ReportWriter()
