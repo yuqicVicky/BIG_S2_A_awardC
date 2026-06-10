@@ -542,14 +542,20 @@ with st.sidebar:
 # ─────────────────────────────────────────────── run audit ───────────────────
 if run_btn and df_train is not None:
     _run_llm_client = anthropic.Anthropic(api_key=api_key_input) if api_key_input else None
-    with st.spinner("Running missingness audit…"):
-        auditor = MissingnessAuditor(
-            df_train,
-            predict_df=df_predict,
-            target_col=target_col,
-            llm_client=_run_llm_client,
-        )
-        results = auditor.run()
+    try:
+        with st.spinner("Running missingness audit…"):
+            auditor = MissingnessAuditor(
+                df_train,
+                predict_df=df_predict,
+                target_col=target_col,
+                llm_client=_run_llm_client,
+            )
+            results = auditor.run()
+    except Exception as _audit_err:
+        st.error(f"Audit failed: {type(_audit_err).__name__}: {_audit_err}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
+        st.stop()
     st.session_state.update(
         {
             "audit_results": results,
