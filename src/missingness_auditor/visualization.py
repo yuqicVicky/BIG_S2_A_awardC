@@ -19,6 +19,13 @@ _SEVERITY_COLORS = {
     "trace":    "#aec7e8",
 }
 
+_CHART_METHODS: dict[str, str] = {
+    "missingness_bar":    "_bar_chart_fig",
+    "pattern_matrix":     "_pattern_matrix_fig",
+    "target_signal":      "_target_signal_fig",
+    "missing_correlation": "_missing_correlation_fig",
+}
+
 
 class MissingnessVisualizer:
     def __init__(self, df: pd.DataFrame, target_col: str | None = None):
@@ -29,12 +36,14 @@ class MissingnessVisualizer:
     # Public API
     # ------------------------------------------------------------------
 
-    def generate_figures(self) -> dict[str, plt.Figure]:
-        """Return {name: Figure} — caller is responsible for closing."""
+    def generate_figures(self, charts: list[str] | None = None) -> dict[str, plt.Figure]:
+        """Return {name: Figure} for the requested charts. Caller is responsible for closing."""
+        if charts is None:
+            charts = list(_CHART_METHODS.keys())
         return {
-            "missingness_bar":           self._bar_chart_fig(),
-            "missingness_matrix":        self._pattern_matrix_fig(),
-            "missingness_target_signal": self._target_signal_fig(),
+            name: getattr(self, _CHART_METHODS[name])()
+            for name in charts
+            if name in _CHART_METHODS
         }
 
     def generate_all(self, figures_dir: str) -> None:
@@ -211,13 +220,57 @@ class MissingnessVisualizer:
         self._add_caption(fig, caption)
         return fig
 
+    def _missing_correlation_fig(self) -> plt.Figure:
+        missing_cols = [c for c in self.df.columns if self.df[c].isna().any()]
+        if len(missing_cols) < 2:
+            return self._blank_fig("Need ≥ 2 columns with missing values for correlation plot")
+
+        mat = self.df[missing_cols].isna().astype(float)
+        corr = mat.corr()
+        n = len(missing_cols)
+
+        fig, ax = plt.subplots(figsize=(max(5, n * 0.9 + 2), max(4, n * 0.8 + 1)))
+        im = ax.imshow(corr.values, cmap="RdYlGn", vmin=-1, vmax=1, aspect="auto")
+        plt.colorbar(im, ax=ax, shrink=0.8, label="correlation")
+        ax.set_xticks(range(n))
+        ax.set_yticks(range(n))
+        ax.set_xticklabels(missing_cols, rotation=45, ha="right", fontsize=8)
+        ax.set_yticklabels(missing_cols, fontsize=8)
+        ax.set_title("Missingness Indicator Correlation\n(red = co-missing, green = mutually exclusive)")
+
+        for i in range(n):
+            for j in range(n):
+                val = corr.values[i, j]
+                ax.text(
+                    j, i, f"{val:.2f}", ha="center", va="center",
+                    fontsize=7, color="white" if abs(val) > 0.7 else "black",
+                )
+        fig.tight_layout()
+
+        pairs = [
+            (missing_cols[i], missing_cols[j], corr.values[i, j])
+            for i in range(n) for j in range(i + 1, n)
+            if abs(corr.values[i, j]) > 0.5
+        ]
+        if pairs:
+            top = sorted(pairs, key=lambda x: -abs(x[2]))[:3]
+            desc = ", ".join(f"'{a}'↔'{b}' ({v:.2f})" for a, b, v in top)
+            caption = (
+                f"Strong co-missingness: {desc}. "
+                "These columns tend to be missing together — likely a shared cause. "
+                "Consider imputing them jointly or flagging their combined indicator."
+            )
+        else:
+            caption = (
+                "No strong co-missingness correlations detected (all |r| < 0.5). "
+                "Each column's missingness appears largely independent of the others."
+            )
+        self._add_caption(fig, caption)
+        return fig
+
     @staticmethod
     def _add_caption(fig: plt.Figure, text: str) -> None:
-        """Render a data-driven interpretation below the figure axes.
-
-        Placed at y < 0 so it falls outside the axes area; bbox_inches='tight'
-        captures it when saving.
-        """
+        """Render a data-driven interpretation below the figure axes."""
         wrapped = "\n".join(textwrap.wrap(text, width=100))
         n_lines = wrapped.count("\n") + 1
         fig.text(

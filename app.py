@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from typing import Optional
 
@@ -25,6 +26,13 @@ st.set_page_config(
     page_icon="🤖",
     layout="wide",
 )
+
+_CHART_TITLES = {
+    "missingness_bar":    "Missingness Rate by Column",
+    "pattern_matrix":     "Co-Missingness Pattern Matrix",
+    "target_signal":      "Target Signal by Missingness",
+    "missing_correlation": "Missingness Correlation",
+}
 
 # ──────────────────────────────────────────────── helpers ────────────────────
 
@@ -51,6 +59,7 @@ def _reset() -> None:
         "audit_results", "auditor", "df_train", "df_predict", "target_col",
         "imputed_df", "imputed_df_predict", "ai_sections",
         "chat_history", "imputation_summary",
+        "chart_list", "chart_rationale",
     ]:
         st.session_state.pop(key, None)
 
@@ -99,24 +108,101 @@ def _build_context(results: dict, target_col: Optional[str]) -> str:
     )
 
 
-def _claude_call(client: anthropic.Anthropic, prompt: str, max_tokens: int = 400) -> str:
+def _claude_structured(
+    client: anthropic.Anthropic, prompt: str, max_tokens: int = 600
+) -> dict | None:
+    """Call Claude and return parsed JSON insight dict, or None on failure."""
+    json_prompt = (
+        prompt
+        + "\n\nReturn ONLY valid JSON (no markdown fences, no extra text):\n"
+        + '{"severity":"high|medium|low","headline":"one sentence summary",'
+        + '"bullets":["finding 1","finding 2","finding 3"],"recommendation":"one action to take"}'
+    )
     try:
         resp = client.messages.create(
             model="claude-opus-4-8",
             max_tokens=max_tokens,
             thinking={"type": "adaptive"},
+            messages=[{"role": "user", "content": json_prompt}],
+        )
+        text = next((b.text for b in resp.content if b.type == "text"), "")
+        text = re.sub(r"```[a-z]*\n?", "", text).strip().rstrip("`")
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if m:
+            return json.loads(m.group())
+    except Exception:
+        pass
+    return None
+
+
+def _render_insight(data: dict | None, label: str = "Claude's Analysis") -> None:
+    """Render a structured AI insight as a severity-aware card with bullets."""
+    if data is None:
+        return
+
+    severity = data.get("severity", "low")
+    headline = data.get("headline", "")
+    bullets = data.get("bullets", [])
+    rec = data.get("recommendation", "")
+
+    icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(severity, "🔵")
+    st.markdown(f"**{icon} {label}**")
+    if headline:
+        st.markdown(f"> _{headline}_")
+    if bullets:
+        st.markdown("\n".join(f"- {b}" for b in bullets))
+    if rec:
+        if severity == "high":
+            st.error(f"**Action required:** {rec}")
+        elif severity == "medium":
+            st.warning(f"**Recommendation:** {rec}")
+        else:
+            st.success(f"**Suggested:** {rec}")
+
+
+def _plan_charts(
+    client: anthropic.Anthropic, ctx: str, has_target: bool, n_missing_cols: int
+) -> tuple[list[str], str]:
+    """Ask Claude (haiku) which 2-3 charts are most informative for this dataset."""
+    available = ["missingness_bar", "pattern_matrix"]
+    if has_target:
+        available.append("target_signal")
+    if n_missing_cols >= 3:
+        available.append("missing_correlation")
+
+    prompt = (
+        f"Missing-data audit summary:\n{ctx}\n\n"
+        f"Available chart types: {available}\n"
+        "- missingness_bar: bar chart of missing % per column — always useful\n"
+        "- pattern_matrix: row×column heatmap of co-missingness — useful when 2+ columns missing\n"
+        "- target_signal: compare target value for rows with/without a feature — include if any target_signal=True\n"
+        "- missing_correlation: correlation between missingness indicators — useful when 3+ columns missing\n\n"
+        "Choose 2-3 charts that give the most insight for THIS specific dataset. "
+        "Return ONLY valid JSON: {\"charts\":[\"name1\",\"name2\"],\"rationale\":\"brief reason\"}"
+    )
+    try:
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
             messages=[{"role": "user", "content": prompt}],
         )
-        return next((b.text for b in resp.content if b.type == "text"), "")
-    except Exception as e:
-        return f"_(AI insight unavailable: {e})_"
-
-
-def _show_insight(key: str, ai_sections: dict, api_key: str) -> None:
-    if text := ai_sections.get(key):
-        st.info(f"🤖 **Claude:** {text}")
-    elif not api_key:
-        st.caption("_Add an API key in the sidebar for AI-guided insights._")
+        text = next((b.text for b in resp.content if b.type == "text"), "")
+        text = re.sub(r"```[a-z]*\n?", "", text).strip().rstrip("`")
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if m:
+            d = json.loads(m.group())
+            valid = [c for c in d.get("charts", []) if c in available]
+            if valid:
+                return valid, d.get("rationale", "")
+    except Exception:
+        pass
+    # Sensible fallback
+    charts = ["missingness_bar"]
+    if n_missing_cols >= 2:
+        charts.append("pattern_matrix")
+    if has_target:
+        charts.append("target_signal")
+    return charts, ""
 
 
 # ──────────────────────────────────────────────── sidebar ────────────────────
@@ -195,7 +281,7 @@ if run_btn and df_train is not None:
         }
     )
     for k in ("imputed_df", "imputed_df_predict", "ai_sections",
-               "chat_history", "imputation_summary"):
+               "chat_history", "imputation_summary", "chart_list", "chart_rationale"):
         st.session_state.pop(k, None)
 
 # ────────────────────────────────────────────── landing page ─────────────────
@@ -228,54 +314,45 @@ if api_key_input and "ai_sections" not in st.session_state:
     client = anthropic.Anthropic(api_key=api_key_input)
     ctx = _build_context(results, target_col)
     BASE = f"You are a senior data scientist reviewing this missing-data audit:\n\n{ctx}\n\n"
+    n_missing_cols = sum(1 for c in df_train.columns if df_train[c].isna().any())
 
     with st.spinner("Claude is analyzing your dataset…"):
-        ai_sections: dict[str, str] = {}
+        ai_sections: dict[str, dict | None] = {}
+        chart_list: list[str] = []
+        chart_rationale: str = ""
         try:
-            ai_sections["overview"] = _claude_call(
+            ai_sections["overview"] = _claude_structured(
                 client,
-                BASE
-                + "Write a 3-sentence executive summary covering: (1) overall severity, "
-                "(2) the most concerning column(s), (3) the main modeling risk. "
-                "Be specific to these numbers.",
-                400,
+                BASE + "Assess the overall severity of missingness in this dataset. "
+                "Identify the most concerning column and the main risk for a downstream model.",
+                600,
             )
-            ai_sections["profile"] = _claude_call(
+            ai_sections["profile"] = _claude_structured(
                 client,
-                BASE
-                + "In 3 sentences, explain the per-column missingness profile. "
-                "Which columns have critical or high severity, and what does that mean for "
-                "downstream model quality?",
-                350,
+                BASE + "Assess the per-column missingness profile. "
+                "Which columns have critical or high severity, and what does that mean for model quality?",
+                600,
             )
-            ai_sections["mechanisms"] = _claude_call(
+            ai_sections["mechanisms"] = _claude_structured(
                 client,
-                BASE
-                + "In 4 sentences, explain what the detected missingness mechanisms mean for "
-                "this dataset. Focus on any target-associated or MAR-like columns and their "
-                "bias implications for a predictive model.",
-                450,
+                BASE + "Interpret the detected missingness mechanisms. "
+                "Focus on any target-associated or MAR-like columns and their bias implications for a predictive model.",
+                700,
             )
-            ai_sections["structural"] = _claude_call(
+            if struct["n_structural_pairs"] > 0:
+                ai_sections["structural"] = _claude_structured(
+                    client,
+                    BASE + "Interpret the structural absence patterns found. "
+                    "What do they imply for imputation strategy?",
+                    500,
+                )
+            ai_sections["plan"] = _claude_structured(
                 client,
-                BASE
-                + (
-                    "In 2-3 sentences, interpret the structural absence patterns found and "
-                    "explain what they imply for imputation."
-                    if struct["n_structural_pairs"] > 0
-                    else "In 2 sentences, confirm no structural absence was found and explain "
-                    "why that simplifies imputation."
-                ),
-                300,
+                BASE + "Evaluate the imputation plan. "
+                "Explain why specific columns received their strategies, and what the analyst must do to avoid leakage.",
+                700,
             )
-            ai_sections["plan"] = _claude_call(
-                client,
-                BASE
-                + "In 4 sentences, explain the imputation strategies recommended. Why do "
-                "specific columns get their strategies? What must the analyst do before "
-                "model training to avoid leakage?",
-                450,
-            )
+            chart_list, chart_rationale = _plan_charts(client, ctx, bool(target_col), n_missing_cols)
         except anthropic.AuthenticationError:
             st.error("Invalid API key. Please check your key in the sidebar.")
             ai_sections = {}
@@ -284,11 +361,20 @@ if api_key_input and "ai_sections" not in st.session_state:
             ai_sections = {}
 
     st.session_state["ai_sections"] = ai_sections
+    st.session_state["chart_list"] = chart_list
+    st.session_state["chart_rationale"] = chart_rationale
 
-ai_sections: dict[str, str] = st.session_state.get("ai_sections", {})
+ai_sections: dict[str, dict | None] = st.session_state.get("ai_sections", {})
 
-def _insight(key: str) -> None:
-    _show_insight(key, ai_sections, api_key_input)
+
+def _insight(key: str, label: str = "Claude's Analysis") -> None:
+    data = ai_sections.get(key)
+    if data is None:
+        if not api_key_input:
+            st.caption("_Add an API key in the sidebar for AI-guided insights._")
+        return
+    _render_insight(data, label)
+
 
 # ──────────────────────────────────────────────── main report ────────────────
 st.title("AI Missingness Audit Report")
@@ -300,7 +386,7 @@ c2.metric("Columns", summary["total_columns"])
 c3.metric("With missing", summary["columns_with_any_missing"])
 c4.metric("Overall rate", f"{summary['overall_missing_rate']:.1%}")
 
-_insight("overview")
+_insight("overview", "Overall Assessment")
 
 st.divider()
 
@@ -322,7 +408,7 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
 )
-_insight("profile")
+_insight("profile", "Profile Interpretation")
 
 if profile.get("predict_missing_rates"):
     st.markdown("**Predict-set missing rates**")
@@ -371,15 +457,13 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
 )
-_insight("mechanisms")
+_insight("mechanisms", "Mechanism Interpretation")
 
 st.divider()
 
-# ── Section 3: Structural ─────────────────────────────────────────────────────
-st.subheader("🏗 Structural Absence")
-if struct["n_structural_pairs"] == 0:
-    st.success("No structural missingness pairs detected.")
-else:
+# ── Section 3: Structural (only shown when pairs are detected) ────────────────
+if struct["n_structural_pairs"] > 0:
+    st.subheader("🏗 Structural Absence")
     st.warning(f"{struct['n_structural_pairs']} structural pair(s) detected.")
     st.dataframe(
         pd.DataFrame(
@@ -396,9 +480,8 @@ else:
         use_container_width=True,
         hide_index=True,
     )
-_insight("structural")
-
-st.divider()
+    _insight("structural", "Structural Pattern Analysis")
+    st.divider()
 
 # ── Section 4: Imputation Plan ────────────────────────────────────────────────
 st.subheader("📋 Imputation Plan")
@@ -435,7 +518,7 @@ if sc:
         + " · ".join(f"`{k}`: {v}" for k, v in sorted(sc.items(), key=lambda x: -x[1]))
     )
 
-_insight("plan")
+_insight("plan", "Plan Evaluation")
 
 with st.expander("Leakage-safe sklearn pattern"):
     proto = leakage.get("global_protocol", {})
@@ -456,19 +539,20 @@ if st.button("⚡ Apply Imputation", type="primary"):
         imp = st.session_state["imputed_df"]
         remaining = int(imp.isna().sum().sum())
         client = anthropic.Anthropic(api_key=api_key_input)
-        st.session_state["imputation_summary"] = _claude_call(
+        raw = _claude_structured(
             client,
             f"Imputation was applied: {imp.shape[0]} rows × {imp.shape[1]} columns, "
             f"{remaining} NAs remain. Strategies used: {json.dumps(sc)}. "
-            "In 2 sentences, confirm what was done and flag one thing to verify before training.",
-            250,
+            "Confirm what was done and flag one thing to verify before training.",
+            400,
         )
+        st.session_state["imputation_summary"] = raw
 
 if "imputed_df" in st.session_state:
     imp = st.session_state["imputed_df"]
     st.success(f"Imputation complete — {imp.shape[0]:,} rows × {imp.shape[1]} columns")
     if summ := st.session_state.get("imputation_summary"):
-        st.info(f"🤖 **Claude:** {summ}")
+        _render_insight(summ, "Post-Imputation Check")
     st.dataframe(imp.head(20), use_container_width=True)
     remaining = int(imp.isna().sum().sum())
     if remaining:
@@ -484,19 +568,52 @@ if "imputed_df" in st.session_state:
 
 st.divider()
 
-# ── Section 5: Visualizations ─────────────────────────────────────────────────
+# ── Section 5: Visualizations (LLM-planned) ───────────────────────────────────
 st.subheader("🖼 Visualizations")
+
+chart_list: list[str] = st.session_state.get("chart_list", [])
+chart_rationale: str = st.session_state.get("chart_rationale", "")
+
+# Fallback when no API key (or chart planning failed)
+if not chart_list:
+    n_mc = sum(1 for c in df_train.columns if df_train[c].isna().any())
+    chart_list = ["missingness_bar"]
+    if n_mc >= 2:
+        chart_list.append("pattern_matrix")
+    if target_col:
+        chart_list.append("target_signal")
+
+if chart_rationale:
+    st.caption(f"🤖 _Claude selected these charts: {chart_rationale}_")
+
 viz = MissingnessVisualizer(df_train, target_col=target_col)
-figs = viz.generate_figures()
-col_a, col_b = st.columns(2)
-with col_a:
-    st.markdown("**Missingness Rate by Column**")
-    st.pyplot(figs["missingness_bar"], bbox_inches="tight")
-with col_b:
-    st.markdown("**Pattern Matrix**")
-    st.pyplot(figs["missingness_matrix"], bbox_inches="tight")
-st.markdown("**Target Signal by Missingness**")
-st.pyplot(figs["missingness_target_signal"], bbox_inches="tight")
+figs = viz.generate_figures(charts=chart_list)
+items = list(figs.items())
+
+if len(items) == 1:
+    name, fig = items[0]
+    st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
+    st.pyplot(fig, bbox_inches="tight")
+elif len(items) == 2:
+    col_a, col_b = st.columns(2)
+    for col, (name, fig) in zip([col_a, col_b], items):
+        with col:
+            st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
+            st.pyplot(fig, bbox_inches="tight")
+else:
+    col_a, col_b = st.columns(2)
+    with col_a:
+        name, fig = items[0]
+        st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
+        st.pyplot(fig, bbox_inches="tight")
+    with col_b:
+        name, fig = items[1]
+        st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
+        st.pyplot(fig, bbox_inches="tight")
+    for name, fig in items[2:]:
+        st.markdown(f"**{_CHART_TITLES.get(name, name)}**")
+        st.pyplot(fig, bbox_inches="tight")
+
 for fig in figs.values():
     plt.close(fig)
 
@@ -524,7 +641,6 @@ else:
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Prepend audit context to the first user message only
         api_messages = []
         for i, m in enumerate(st.session_state["chat_history"]):
             if i == 0:
