@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 from missingness_auditor import MissingnessAuditor
 from missingness_auditor.visualization import MissingnessVisualizer
 from missingness_auditor.reporting import ReportWriter
