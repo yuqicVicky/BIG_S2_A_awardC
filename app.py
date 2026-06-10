@@ -60,6 +60,7 @@ def _reset() -> None:
         "imputed_df", "imputed_df_predict", "ai_sections",
         "chat_history", "imputation_summary",
         "chart_list", "chart_rationale", "domain_tags",
+        "playground_df", "playground_strategies",
     ]:
         st.session_state.pop(key, None)
 
@@ -250,6 +251,232 @@ def _plan_charts(
     return charts, ""
 
 
+# ──────────────────── playground & before/after helpers ──────────────────────
+
+_PLAN_TO_PLAYGROUND: dict[str, str] = {
+    "numeric_median":                            "median",
+    "numeric_median_plus_indicator":             "median",
+    "groupwise_numeric_median_plus_indicator":   "groupwise_median",
+    "group_median":                              "groupwise_median",
+    "time_series_ffill_bfill_plus_indicator":    "median",
+    "categorical_missing_token":                 "missing_token",
+    "categorical_missing_token_plus_indicator":  "missing_token",
+    "categorical_mode_plus_indicator":           "mode",
+    "structural_none_token_plus_indicator":      "missing_token",
+    "structural_zero_plus_indicator":            "median",
+    "structural_none_or_zero":                   "median",
+    "model_based_imputation_optional":           "mice",
+    "no_imputation_needed":                      "none",
+    "drop_column":                               "drop",
+}
+
+
+def _apply_playground_impute(
+    df_train: pd.DataFrame,
+    col: str,
+    strategy: str,
+    group_col: str | None = None,
+) -> tuple[pd.Series | None, bool]:
+    """Fit+apply a single-column imputation strategy on train data."""
+    series = df_train[col].copy()
+    is_num = pd.api.types.is_numeric_dtype(series)
+
+    if strategy == "drop":
+        return None, True
+    if strategy == "none":
+        return series, False
+
+    if strategy == "mean" and is_num:
+        return series.fillna(series.mean()), False
+    if strategy == "median":
+        return series.fillna(series.median() if is_num else series.mode().iloc[0] if series.mode().size else "MISSING"), False
+    if strategy == "knn" and is_num:
+        try:
+            from sklearn.impute import KNNImputer
+            num_cols = df_train.select_dtypes(include="number").columns.tolist()
+            imp = KNNImputer(n_neighbors=5)
+            arr = imp.fit_transform(df_train[num_cols].values.astype(float))
+            return pd.Series(arr[:, num_cols.index(col)], index=df_train.index, name=col), False
+        except Exception:
+            return series.fillna(series.median()), False
+    if strategy == "mice" and is_num:
+        try:
+            from sklearn.experimental import enable_iterative_imputer  # noqa: F401
+            from sklearn.impute import IterativeImputer
+            num_cols = df_train.select_dtypes(include="number").columns.tolist()
+            imp = IterativeImputer(max_iter=10, random_state=42)
+            arr = imp.fit_transform(df_train[num_cols].values.astype(float))
+            return pd.Series(arr[:, num_cols.index(col)], index=df_train.index, name=col), False
+        except Exception:
+            return series.fillna(series.median()), False
+    if strategy == "groupwise_median" and is_num:
+        if group_col and group_col in df_train.columns:
+            gmap = df_train.groupby(group_col)[col].median().to_dict()
+            filled = series.fillna(df_train[group_col].map(gmap))
+            return filled.fillna(series.median()), False
+        return series.fillna(series.median()), False
+    if strategy == "missing_token":
+        return series.fillna("MISSING"), False
+    if strategy == "mode":
+        modes = series.mode()
+        fill = modes.iloc[0] if len(modes) > 0 else "MISSING"
+        return series.fillna(fill), False
+
+    # fallback
+    return (series.fillna(series.median()) if is_num else series.fillna("MISSING")), False
+
+
+def _render_numeric_comparison(before: pd.Series, after: pd.Series, col: str) -> None:
+    bv = before.dropna().values.astype(float)
+    av = after.dropna().values.astype(float)
+    if len(bv) == 0 or len(av) == 0:
+        st.info("Not enough data to compare.")
+        return
+
+    def fmt(x: float) -> str:
+        return f"{x:.4g}"
+
+    stats_df = pd.DataFrame({
+        "Stat":   ["Mean", "Median", "Std Dev", "Min", "Max"],
+        "Before": [fmt(bv.mean()), fmt(float(np.median(bv))), fmt(bv.std()), fmt(bv.min()), fmt(bv.max())],
+        "After":  [fmt(av.mean()), fmt(float(np.median(av))), fmt(av.std()), fmt(av.min()), fmt(av.max())],
+    })
+    st.dataframe(stats_df, use_container_width=False, hide_index=True)
+
+    mean_shift = abs(av.mean() - bv.mean()) / (abs(bv.mean()) + 1e-9)
+    std_ratio = av.std() / (bv.std() + 1e-9)
+
+    try:
+        from scipy.stats import ks_2samp
+        ks_stat, ks_p = ks_2samp(bv, av)
+    except ImportError:
+        ks_stat, ks_p = 0.0, 1.0
+
+    alerts = []
+    if mean_shift > 0.10:
+        alerts.append(f"Mean shifted {mean_shift:.1%} — imputed fill may not be representative.")
+    if std_ratio < 0.80:
+        alerts.append(f"Std dev shrank {(1-std_ratio):.1%} — imputation compressed the spread.")
+    if ks_p < 0.05:
+        alerts.append(f"KS test: distributions differ significantly (p={ks_p:.3f}, stat={ks_stat:.3f}).")
+    if alerts:
+        for a in alerts:
+            st.warning(f"⚠️ {a}")
+    else:
+        st.success("Distribution stable — no significant drift detected.")
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3), sharey=False)
+    axes[0].hist(bv, bins=30, color="#4C78A8", edgecolor="white", alpha=0.9)
+    axes[0].set_title(f"Before  (n={len(bv):,})")
+    axes[0].set_xlabel(col)
+    axes[0].set_ylabel("Count")
+    axes[1].hist(av, bins=30, color="#72B7B2", edgecolor="white", alpha=0.9)
+    axes[1].set_title(f"After  (n={len(av):,})")
+    axes[1].set_xlabel(col)
+    axes[1].set_ylabel("Count")
+    plt.tight_layout()
+    st.pyplot(fig, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _render_categorical_comparison(before: pd.Series, after: pd.Series, col: str) -> None:
+    TOP_N = 8
+    bvc = before.value_counts(dropna=True)
+    avc = after.value_counts(dropna=False)
+    missing_pct_before = before.isna().mean()
+    missing_token_pct = (after == "MISSING").mean()
+
+    ca, cb = st.columns(2)
+    with ca:
+        st.markdown(f"**Before** — {missing_pct_before:.1%} missing")
+        tbl = bvc.head(TOP_N).reset_index()
+        tbl.columns = ["Category", "Count"]
+        n_valid = len(before.dropna()) or 1
+        tbl["Pct"] = (tbl["Count"] / n_valid * 100).map("{:.1f}%".format)
+        st.dataframe(tbl, use_container_width=True, hide_index=True)
+    with cb:
+        st.markdown(f"**After** — {missing_token_pct:.1%} MISSING token")
+        tbl2 = avc.head(TOP_N).reset_index()
+        tbl2.columns = ["Category", "Count"]
+        n_total = len(after) or 1
+        tbl2["Pct"] = (tbl2["Count"] / n_total * 100).map("{:.1f}%".format)
+        st.dataframe(tbl2, use_container_width=True, hide_index=True)
+
+    if missing_token_pct > 0.30:
+        st.warning(
+            f"⚠️ MISSING token is {missing_token_pct:.1%} of all values "
+            "— check that your model handles this category meaningfully."
+        )
+
+    valid_before = before.dropna()
+    if len(valid_before) > 0 and len(valid_before.mode()) > 0:
+        mode_val = valid_before.mode().iloc[0]
+        pct_b = (before == mode_val).mean()
+        pct_a = (after == mode_val).mean()
+        if pct_a > 2 * pct_b and pct_a > 0.30:
+            st.warning(
+                f"⚠️ Mode fill caused `{mode_val}` to inflate from {pct_b:.1%} → {pct_a:.1%} "
+                "— risk of class-imbalance bias in downstream model."
+            )
+
+    cats = list(set(bvc.head(TOP_N).index) | set(avc.head(TOP_N).index))
+    n_b = len(before.dropna()) or 1
+    n_a = len(after) or 1
+    bvals = [bvc.get(c, 0) / n_b for c in cats]
+    avals = [avc.get(c, 0) / n_a for c in cats]
+
+    x = np.arange(len(cats))
+    w = 0.35
+    fig, ax = plt.subplots(figsize=(max(7, len(cats) * 1.2), 3.5))
+    ax.bar(x - w / 2, bvals, w, label="Before", color="#4C78A8", alpha=0.9)
+    ax.bar(x + w / 2, avals, w, label="After",  color="#72B7B2", alpha=0.9)
+    ax.set_xticks(x)
+    ax.set_xticklabels([str(c)[:12] for c in cats], rotation=30, ha="right")
+    ax.set_ylabel("Proportion")
+    ax.set_title(f"{col} — Category Distribution Before vs After")
+    ax.legend()
+    plt.tight_layout()
+    st.pyplot(fig, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _render_before_after_section(
+    df_before: pd.DataFrame,
+    df_after: pd.DataFrame,
+    profile: dict,
+    target_col: str | None,
+    label: str = "📊 Before vs After Simulation",
+) -> None:
+    st.subheader(label)
+
+    imputed_cols = [
+        col for col in df_before.columns
+        if col != target_col and df_before[col].isna().any()
+    ]
+    dropped = [c for c in df_before.columns if c not in df_after.columns and c != target_col]
+    if dropped:
+        st.info(f"Dropped columns: {', '.join(f'`{c}`' for c in dropped)}")
+
+    if not imputed_cols:
+        st.info("No missing values were present before imputation.")
+        return
+
+    for col in imputed_cols:
+        dtype_cat = profile["columns"].get(col, {}).get("dtype_category", "numeric")
+        n_miss = int(df_before[col].isna().sum())
+
+        if col not in df_after.columns:
+            st.markdown(f"**{col}** — dropped ({n_miss} missing values removed)")
+            continue
+
+        n_remain = int(df_after[col].isna().sum())
+        with st.expander(f"**{col}** — {dtype_cat} | {n_miss} missing → {n_remain} remaining", expanded=True):
+            if dtype_cat == "numeric":
+                _render_numeric_comparison(df_before[col], df_after[col], col)
+            else:
+                _render_categorical_comparison(df_before[col], df_after[col], col)
+
+
 # ──────────────────────────────────────────────── sidebar ────────────────────
 with st.sidebar:
     st.title("🤖 AI Missingness Auditor")
@@ -326,7 +553,8 @@ if run_btn and df_train is not None:
         }
     )
     for k in ("imputed_df", "imputed_df_predict", "ai_sections",
-               "chat_history", "imputation_summary", "chart_list", "chart_rationale"):
+               "chat_history", "imputation_summary", "chart_list", "chart_rationale",
+               "playground_df", "playground_strategies"):
         st.session_state.pop(k, None)
 
 # ────────────────────────────────────────────── landing page ─────────────────
@@ -622,7 +850,6 @@ if "imputed_df" in st.session_state:
     st.success(f"Imputation complete — {imp.shape[0]:,} rows × {imp.shape[1]} columns")
     if summ := st.session_state.get("imputation_summary"):
         _render_insight(summ, "Post-Imputation Check")
-    st.dataframe(imp.head(20), use_container_width=True)
     remaining = int(imp.isna().sum().sum())
     if remaining:
         st.warning(
@@ -631,9 +858,138 @@ if "imputed_df" in st.session_state:
         )
     else:
         st.success("No missing values remain.")
+
+    _render_before_after_section(df_train, imp, profile, target_col)
+
+    with st.expander("View imputed data (first 20 rows)"):
+        st.dataframe(imp.head(20), use_container_width=True)
     if "imputed_df_predict" in st.session_state:
-        st.subheader("Predict set (imputed)")
-        st.dataframe(st.session_state["imputed_df_predict"].head(20), use_container_width=True)
+        with st.expander("Predict set (imputed, first 20 rows)"):
+            st.dataframe(st.session_state["imputed_df_predict"].head(20), use_container_width=True)
+
+st.divider()
+
+# ── Strategy Playground ───────────────────────────────────────────────────────
+st.subheader("🎮 Strategy Playground")
+st.caption(
+    "Each column shows its AI-recommended strategy. Override any column, "
+    "then click **Apply Selected Strategies** to see the before vs. after immediately."
+)
+
+_missing_cols_pg = [
+    col for col in df_train.columns
+    if col != target_col and df_train[col].isna().any()
+]
+
+if not _missing_cols_pg:
+    st.info("No columns with missing values — nothing to impute.")
+else:
+    _NUMERIC_OPTS = [
+        "recommended",
+        "mean",
+        "median",
+        "KNN  (k=5)",
+        "MICE  (IterativeImputer)",
+        "groupwise median",
+        "drop column",
+    ]
+    _CAT_OPTS = [
+        "recommended",
+        "MISSING token",
+        "mode fill",
+        "drop column",
+    ]
+
+    _pg_strategies: dict[str, tuple[str, str, str | None]] = {}
+
+    header_cols = st.columns([2, 3, 3])
+    header_cols[0].markdown("**Column**")
+    header_cols[1].markdown("**AI Recommendation**")
+    header_cols[2].markdown("**Your Choice**")
+    st.divider()
+
+    for _col in _missing_cols_pg:
+        _col_info = profile["columns"].get(_col, {})
+        _dtype_cat = _col_info.get("dtype_category", "numeric")
+        _plan_entry = plan["columns"].get(_col, {})
+        _rec = _plan_entry.get("strategy", "numeric_median")
+        _group_col = _plan_entry.get("group_col")
+
+        _opts = _NUMERIC_OPTS if _dtype_cat == "numeric" else _CAT_OPTS
+
+        _c1, _c2, _c3 = st.columns([2, 3, 3])
+        with _c1:
+            _miss_pct = df_train[_col].isna().mean()
+            st.markdown(f"**{_col}**")
+            st.caption(f"{_dtype_cat} · {_miss_pct:.1%} missing")
+        with _c2:
+            st.code(_rec, language=None)
+            if _group_col:
+                st.caption(f"group by `{_group_col}`")
+        with _c3:
+            _choice = st.selectbox(
+                f"Strategy — {_col}",
+                _opts,
+                key=f"pg_{_col}",
+                label_visibility="collapsed",
+            )
+        _pg_strategies[_col] = (_choice, _dtype_cat, _group_col)
+
+    if st.button("🔬 Apply Selected Strategies", type="primary"):
+        with st.spinner("Applying custom strategies…"):
+            _df_pg = df_train.copy()
+            _drop_pg: list[str] = []
+
+            for _col, (_choice, _dtype_cat, _group_col) in _pg_strategies.items():
+                if _choice == "recommended":
+                    _rec_strat = _PLAN_TO_PLAYGROUND.get(
+                        plan["columns"].get(_col, {}).get("strategy", "numeric_median"),
+                        "median",
+                    )
+                    _strat_key = _rec_strat
+                elif _choice == "drop column":
+                    _drop_pg.append(_col)
+                    continue
+                else:
+                    _strat_key = {
+                        "mean":                   "mean",
+                        "median":                 "median",
+                        "KNN  (k=5)":             "knn",
+                        "MICE  (IterativeImputer)": "mice",
+                        "groupwise median":        "groupwise_median",
+                        "MISSING token":           "missing_token",
+                        "mode fill":               "mode",
+                    }.get(_choice, "median")
+
+                _filled, _dropped = _apply_playground_impute(_df_pg, _col, _strat_key, _group_col)
+                if _dropped:
+                    _drop_pg.append(_col)
+                elif _filled is not None:
+                    _df_pg[_col] = _filled
+
+            if _drop_pg:
+                _df_pg = _df_pg.drop(columns=_drop_pg, errors="ignore")
+
+            st.session_state["playground_df"] = _df_pg
+            st.session_state["playground_strategies"] = {
+                col: vals[0] for col, vals in _pg_strategies.items()
+            }
+
+if "playground_df" in st.session_state:
+    _render_before_after_section(
+        df_train,
+        st.session_state["playground_df"],
+        profile,
+        target_col,
+        label="📊 Strategy Playground — Before vs After",
+    )
+    _remain_pg = int(st.session_state["playground_df"].isna().sum().sum())
+    if _remain_pg:
+        st.warning(f"{_remain_pg} missing values remain after custom strategies.")
+    else:
+        st.success("No missing values remain with your selected strategies.")
+    with st.expander("View playground result (first 20 rows)"):
+        st.dataframe(st.session_state["playground_df"].head(20), use_container_width=True)
 
 st.divider()
 
