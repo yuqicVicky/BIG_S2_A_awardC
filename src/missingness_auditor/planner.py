@@ -59,10 +59,14 @@ class ImputationPlanner:
         profile: dict,
         mechanism_audit: dict,
         structural_audit: dict,
+        domain_tags: dict[str, str] | None = None,
     ):
         self.profile = profile
         self.mechanism_audit = mechanism_audit
         self.structural_audit = structural_audit
+        # domain_tags: {col_name: domain_tag} e.g. {"temp_avg_f": "weather_metric"}
+        # Produced by SKILL.md Step 1.5 semantic analysis; optional.
+        self.domain_tags: dict[str, str] = domain_tags or {}
 
     def plan(self) -> dict:
         col_profiles = self.profile.get("columns", {})
@@ -129,6 +133,7 @@ class ImputationPlanner:
                 structural_pattern=structural_pattern,
                 is_high_cardinality=is_high_cardinality,
                 top_cat_feature=top_cat_feature,
+                domain_tag=self.domain_tags.get(col),
             )
 
             # Effective mechanism label
@@ -184,6 +189,15 @@ class ImputationPlanner:
             ),
         }
 
+    # Domain tags that indicate temporally-ordered continuous measurements.
+    # The planner recommends time-series forward/backward fill for these when
+    # group-dependent imputation is not available and miss_rate is moderate.
+    _TEMPORAL_DOMAIN_TAGS: frozenset = frozenset({
+        "weather_metric", "sensor_reading", "time_series_metric",
+        "physiological_measurement", "environmental_metric",
+        "financial_time_series", "temporal_measurement",
+    })
+
     def _decide(
         self,
         col: str,
@@ -195,6 +209,7 @@ class ImputationPlanner:
         structural_pattern: str | None,
         is_high_cardinality: bool,
         top_cat_feature: str | None,
+        domain_tag: str | None = None,
     ) -> tuple[str, bool, str, str | None, str | None]:
         if miss_rate == 0.0:
             return "no_imputation_needed", False, "no_missing_values", None, None
@@ -236,6 +251,21 @@ class ImputationPlanner:
                     top_cat_feature,
                     None,
                 )
+
+            # Domain-aware upgrade: temporally-ordered continuous measurements
+            # (weather, sensor, physiological, financial time-series) benefit from
+            # forward/backward fill over median because adjacent timestamps carry
+            # more signal than the global central tendency.
+            is_temporal_domain = domain_tag in self._TEMPORAL_DOMAIN_TAGS
+            if is_temporal_domain:
+                return (
+                    "time_series_ffill_bfill_plus_indicator",
+                    True,
+                    f"domain={domain_tag!r}_temporal_measurement_ffill_preferred_over_median",
+                    None,
+                    "sort_by_time_column_before_applying_ffill_bfill",
+                )
+
             mar_or_target = mech in ("MAR-like evidence", "target-associated missingness")
             if mar_or_target or target_signal or miss_rate >= _MODERATE_MISSING_THRESHOLD:
                 return (

@@ -28,6 +28,7 @@ class Imputer:
     numeric_median_plus_indicator            : fill with median + binary indicator
     groupwise_numeric_median_plus_indicator  : fill with per-group median + indicator
     group_median                             : alias for groupwise_numeric_median_plus_indicator
+    time_series_ffill_bfill_plus_indicator   : forward/backward fill + indicator (temporal domain)
     categorical_missing_token                : fill with "MISSING"
     categorical_missing_token_plus_indicator : fill with "MISSING" + indicator
     categorical_mode_plus_indicator          : fill with mode + indicator (legacy)
@@ -85,6 +86,17 @@ class Imputer:
                 df_train[col] = df_train[col].fillna(global_median)
                 if df_predict is not None and col in df_predict.columns:
                     df_predict[col] = df_predict[col].fillna(global_median)
+
+            elif strategy == "time_series_ffill_bfill_plus_indicator":
+                # Temporal domain: neighbouring rows carry more signal than global median.
+                # Train: ffill then bfill in row order (assumes data is sorted by time).
+                # Predict: ffill from predict data then backfill using last train value.
+                df_train[col] = df_train[col].ffill().bfill()
+                # Any remaining NaN (all-null column) → global median fallback
+                fallback = df_train[col].median()
+                df_train[col] = df_train[col].fillna(fallback)
+                if df_predict is not None and col in df_predict.columns:
+                    df_predict[col] = df_predict[col].ffill().bfill().fillna(fallback)
 
             elif strategy in ("numeric_median", "numeric_median_plus_indicator"):
                 fill = df_train[col].median()              # fit on train

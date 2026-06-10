@@ -10,6 +10,7 @@
 | `numeric_median` | MCAR-compatible, <10% missing, numeric, few correlated features | `SimpleImputer(strategy="median")` |
 | `numeric_median_plus_indicator` | MAR-like / target-associated / ≥10% missing, numeric | `SimpleImputer` + `MissingIndicator` |
 | `groupwise_numeric_median_plus_indicator` | Group-dependent numeric; per-group median with global fallback | `df.groupby(group_col)[col].transform("median")` |
+| `time_series_ffill_bfill_plus_indicator` | Numeric, domain_tag is a temporal/physical measurement (weather_metric, sensor_reading, etc.) | `Series.ffill().bfill()` + `MissingIndicator` — median fallback for all-null edge case |
 | `categorical_missing_token` | Categorical, <10% missing | `SimpleImputer(strategy="constant", fill_value="__MISSING__")` |
 | `categorical_missing_token_plus_indicator` | Categorical, ≥10% missing or high-cardinality | constant fill + `MissingIndicator` |
 | `structural_zero_plus_indicator` | Structural absence — numeric companion is 0 when categorical NA | `fillna(0)` + indicator |

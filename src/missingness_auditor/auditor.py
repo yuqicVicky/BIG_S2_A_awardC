@@ -41,10 +41,15 @@ class MissingnessAuditor:
         predict_df: pd.DataFrame | None = None,
         *,
         target_col: str | None = None,
+        domain_tags: dict[str, str] | None = None,
     ):
         self.df = df
         self.predict_df = predict_df
         self.target_col = target_col
+        # {col_name: domain_tag} from SKILL.md Step 1.5 semantic analysis.
+        # When provided, the planner uses domain-aware strategies (e.g. ffill for
+        # weather/sensor/temporal columns instead of median).
+        self.domain_tags = domain_tags or {}
 
     def run(self) -> dict:
         """Run all sub-auditors. Returns a dict of results — no disk writes."""
@@ -59,7 +64,8 @@ class MissingnessAuditor:
         structural_missingness = StructuralMissingnessDetector(self.df).detect()
 
         imputation_plan = ImputationPlanner(
-            profile, mechanism_audit, structural_missingness
+            profile, mechanism_audit, structural_missingness,
+            domain_tags=self.domain_tags,
         ).plan()
 
         leakage_safe_check = LeakageSafeImputationChecker(

@@ -59,7 +59,7 @@ def _reset() -> None:
         "audit_results", "auditor", "df_train", "df_predict", "target_col",
         "imputed_df", "imputed_df_predict", "ai_sections",
         "chat_history", "imputation_summary",
-        "chart_list", "chart_rationale",
+        "chart_list", "chart_rationale", "domain_tags",
     ]:
         st.session_state.pop(key, None)
 
@@ -158,6 +158,51 @@ def _render_insight(data: dict | None, label: str = "Claude's Analysis") -> None
             st.warning(f"**Recommendation:** {rec}")
         else:
             st.success(f"**Suggested:** {rec}")
+
+
+def _extract_domain_tags(
+    client: anthropic.Anthropic, df: pd.DataFrame, target_col: str | None
+) -> dict[str, str]:
+    """Ask Claude (haiku) to assign a domain_tag to each column.
+    Returns {col_name: domain_tag}; empty dict on failure.
+    """
+    col_summary = pd.DataFrame({
+        "dtype":     df.dtypes.astype(str),
+        "n_unique":  df.nunique(),
+        "sample":    [df[c].dropna().head(3).tolist() if df[c].notna().any() else []
+                      for c in df.columns],
+        "min":       df.select_dtypes("number").min().reindex(df.columns),
+        "max":       df.select_dtypes("number").max().reindex(df.columns),
+    }).to_string()
+
+    prompt = (
+        f"Assign a domain_tag to every column in this dataset.\n"
+        f"Target column (excluded from imputation): {target_col or 'none'}\n\n"
+        f"Column summary:\n{col_summary}\n\n"
+        f"Domain tag examples (use these or invent a fitting label):\n"
+        f"  geographic_identifier, administrative_code, weather_metric, financial_indicator,\n"
+        f"  health_outcome, demographic_rate, binary_flag, free_text, id_or_key, datetime,\n"
+        f"  model_score, sensor_reading, temporal_measurement, environmental_metric.\n\n"
+        f"Reason from column names, dtypes, value ranges, and sample values — do NOT match\n"
+        f"against fixed abbreviation lists. If ambiguous, pick the most plausible tag.\n\n"
+        f"Return ONLY valid JSON mapping every column name to its tag:\n"
+        f'{{"{df.columns[0]}": "domain_tag", ...}}'
+    )
+    try:
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = next((b.text for b in resp.content if b.type == "text"), "")
+        text = re.sub(r"```[a-z]*\n?", "", text).strip().rstrip("`")
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if m:
+            d = json.loads(m.group())
+            return {k: v for k, v in d.items() if isinstance(k, str) and isinstance(v, str)}
+    except Exception:
+        pass
+    return {}
 
 
 def _plan_charts(
@@ -346,11 +391,30 @@ if api_key_input and "ai_sections" not in st.session_state:
                     "What do they imply for imputation strategy?",
                     500,
                 )
+            # Extract domain tags and re-run planner with domain-aware strategies.
+            # This upgrades e.g. weather/sensor columns from median to ffill/bfill.
+            domain_tags = _extract_domain_tags(client, df_train, target_col)
+            if domain_tags:
+                from missingness_auditor.planner import ImputationPlanner
+                updated_plan = ImputationPlanner(
+                    results["missingness_profile"],
+                    results["mechanism_audit"],
+                    results["structural_missingness"],
+                    domain_tags=domain_tags,
+                ).plan()
+                results = {**results, "imputation_plan": updated_plan}
+                st.session_state["audit_results"] = results
+                st.session_state["domain_tags"] = domain_tags
+
+            # Rebuild context with updated plan for the plan AI section
+            ctx = _build_context(results, target_col)
+            BASE = f"You are a senior data scientist reviewing this missing-data audit:\n\n{ctx}\n\n"
             ai_sections["plan"] = _claude_structured(
                 client,
                 BASE + "Evaluate the imputation plan. "
-                "Explain why specific columns received their strategies, and what the analyst must do to avoid leakage.",
-                700,
+                "For each column explain why its strategy was chosen based on its real-world meaning "
+                "(not just statistics), and what the analyst must do to avoid leakage.",
+                800,
             )
             chart_list, chart_rationale = _plan_charts(client, ctx, bool(target_col), n_missing_cols)
         except anthropic.AuthenticationError:
@@ -365,6 +429,11 @@ if api_key_input and "ai_sections" not in st.session_state:
     st.session_state["chart_rationale"] = chart_rationale
 
 ai_sections: dict[str, dict | None] = st.session_state.get("ai_sections", {})
+
+# Reload plan/results in case domain-aware re-run updated them
+results = st.session_state["audit_results"]
+plan = results["imputation_plan"]
+sc = plan.get("summary", {}).get("strategy_counts", {})
 
 
 def _insight(key: str, label: str = "Claude's Analysis") -> None:

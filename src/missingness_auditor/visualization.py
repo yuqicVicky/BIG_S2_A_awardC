@@ -40,11 +40,15 @@ class MissingnessVisualizer:
         """Return {name: Figure} for the requested charts. Caller is responsible for closing."""
         if charts is None:
             charts = list(_CHART_METHODS.keys())
-        return {
-            name: getattr(self, _CHART_METHODS[name])()
-            for name in charts
-            if name in _CHART_METHODS
-        }
+        out: dict[str, plt.Figure] = {}
+        for name in charts:
+            if name not in _CHART_METHODS:
+                continue
+            try:
+                out[name] = getattr(self, _CHART_METHODS[name])()
+            except Exception as exc:
+                out[name] = self._blank_fig(f"Chart '{name}' could not be rendered: {exc}")
+        return out
 
     def generate_all(self, figures_dir: str) -> None:
         """Save all figures to disk and close them."""
@@ -226,7 +230,15 @@ class MissingnessVisualizer:
             return self._blank_fig("Need ≥ 2 columns with missing values for correlation plot")
 
         mat = self.df[missing_cols].isna().astype(float)
+        # Drop constant columns (all-missing or never-missing) before corr() to avoid NaN
+        varying = [c for c in missing_cols if mat[c].std() > 0]
+        if len(varying) < 2:
+            return self._blank_fig("Insufficient variance in missingness indicators for correlation plot")
+        mat = mat[varying]
+        missing_cols = varying
         corr = mat.corr()
+        # Replace any residual NaN (e.g. near-constant columns) with 0 for display
+        corr = corr.fillna(0.0)
         n = len(missing_cols)
 
         fig, ax = plt.subplots(figsize=(max(5, n * 0.9 + 2), max(4, n * 0.8 + 1)))
