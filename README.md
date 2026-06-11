@@ -1,3 +1,5 @@
+<img align="right" src="figures/staix.png" width="150" alt="STAI-X Challenge icon">
+
 # AI Missingness Auditor
 
 > **Award C Statistical Skill / Agent Module**  
@@ -13,7 +15,9 @@
 **Kaggle discussion:** [STAI-X Challenge 2026 discussions](https://www.kaggle.com/competitions/stai-x-challenge-2026/discussion?sort=hotness)  
 **GitHub repository:** [https://github.com/yuqicVicky/BIG_S2_A_awardC](https://github.com/yuqicVicky/BIG_S2_A_awardC)
 
-![AI Missingness Auditor Streamlit report](main.png)
+**Quick links:** [Why this exists](#why-this-exists) · [Demo walkthrough](#demo-walkthrough) · [Architecture](#agent-design-and-architecture) · [Use it](#use-it) · [Award C draft](AWARD_C_POST.md)
+
+![AI Missingness Auditor Streamlit report](figures/main.png)
 
 AI Missingness Auditor is a reusable statistical skill for autonomous data-science agents and interactive analysts. Given a CSV or pandas DataFrame, it profiles missingness, surfaces mechanism clues, detects structural absence patterns, and writes a leakage-safe imputation plan before any values are filled.
 
@@ -45,7 +49,7 @@ This skill forces the agent to diagnose first:
 
 The bundled demo contains **1,000 rows**, **7 columns**, **4 columns with missing values**, and an **11.0% overall missing rate**. It is designed to exercise four different missingness patterns in one small dataset.
 
-![AI Missingness Auditor visualization tab](visual.png)
+![AI Missingness Auditor visualization tab](figures/visual.png)
 
 | Column | Missing rate | Mechanism clue | Recommended strategy |
 |---|---:|---|---|
@@ -60,7 +64,7 @@ The visual diagnostics show both the scale of missingness and whether missingnes
 
 The plan is explicit enough for a downstream modeling agent to apply without rerunning the full audit. Users can accept the recommended plan or override individual strategies inside the Streamlit interface.
 
-![AI Missingness Auditor strategy override](imputation.png)
+![AI Missingness Auditor strategy override](figures/imputation.png)
 
 | Strategy | When it is used |
 |---|---|
@@ -145,6 +149,31 @@ results = auditor.run()
 auditor.save_outputs(results, "outputs/demo_missingness")
 
 imputed_df = auditor.apply_imputation(df, results["imputation_plan"])
+```
+
+## Repository Map
+
+```text
+.
+  app.py                         Streamlit demo
+  src/missingness_auditor/       Reusable Python skill
+  examples/                      Demo data builders and runnable examples
+  tests/                         Guardrail and strategy tests
+  references/                    Missing-data references and decision rules
+  figures/                       README and Kaggle submission screenshots
+  AWARD_C_POST.md                Kaggle Discussion draft
+  EVALUATION.md                  Award C evaluation notes
+```
+
+## Quality Checks
+
+```bash
+PYTHONPATH=src pytest tests -q
+PYTHONPATH=src python -m missingness_auditor.cli \
+  --data examples/demo_missingness.csv \
+  --target target \
+  --out /tmp/missingness-auditor-smoke/ \
+  --json-summary
 ```
 
 ## Outputs

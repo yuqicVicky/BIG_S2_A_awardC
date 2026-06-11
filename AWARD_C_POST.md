@@ -22,7 +22,7 @@ Live demo: https://aimissingnessauditor.streamlit.app/
 
 Kaggle discussion index: https://www.kaggle.com/competitions/stai-x-challenge-2026/discussion?sort=hotness
 
-![AI Missingness Auditor Streamlit report](main.png)
+![AI Missingness Auditor Streamlit report](figures/main.png)
 
 ## Agent Design and Architecture
 
@@ -54,7 +54,7 @@ The bundled demo has 1,000 rows, 7 columns, 4 columns with missing values, and a
 | `risk_score` | 11.1% | Target-associated missingness | `numeric_median_plus_indicator` |
 | `facility_quality` | 37.8% | Structural absence concern with `facility_area` | `structural_none_token_plus_indicator` |
 
-![AI Missingness Auditor diagnostics](visual.png)
+![AI Missingness Auditor diagnostics](figures/visual.png)
 
 ## Outputs
 
