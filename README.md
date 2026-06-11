@@ -1,299 +1,233 @@
-# Missingness Audit & Imputation Planner
+# AI Missingness Auditor
 
-A reusable pre-imputation skill for autonomous data-science agents and interactive
-data scientists. It diagnoses missing data — profiling severity, identifying mechanism
-clues, detecting structural absence patterns, and recommending a leakage-safe
-imputation strategy for every column — before a single imputation is applied.
+> **Award C Statistical Skill / Agent Module**  
+> A Claude-enhanced Streamlit demo for diagnosing missing data before imputation.
 
----
+[![Award C](https://img.shields.io/badge/Award%20C-Statistical%20Skill-ff4b4b)](#award-c-submission-info)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![Streamlit](https://img.shields.io/badge/Streamlit-Live%20Demo-FF4B4B?logo=streamlit&logoColor=white)](https://aimissingnessauditor.streamlit.app/)
+[![Agent Module](https://img.shields.io/badge/Agent%20Module-Reusable-2E8B57)](#agent-design-and-architecture)
+[![Leakage Safe](https://img.shields.io/badge/Imputation-Leakage%20Safe-4B7BEC)](#statistical-notes)
 
-## What it does
+**Live demo:** [aimissingnessauditor.streamlit.app](https://aimissingnessauditor.streamlit.app/)  
+**Kaggle discussion:** [STAI-X Challenge 2026 discussions](https://www.kaggle.com/competitions/stai-x-challenge-2026/discussion?sort=hotness)  
+**GitHub repository:** [https://github.com/yuqicVicky/BIG_S2_A_awardC](https://github.com/yuqicVicky/BIG_S2_A_awardC)
 
-Given a CSV or DataFrame, the auditor produces:
+![AI Missingness Auditor Streamlit report](main.png)
 
-| Output | Description |
-|--------|-------------|
-| **Missingness profile** | Per-column missing rates, severity labels (trace/low/moderate/high), dtype category |
-| **Mechanism clues** | MCAR-compatible / MAR-like / MNAR/structural concern — statistical clues, not causal claims |
-| **Structural missingness** | Detects `(categorical NA → numeric companion is 0)` patterns — absence of a thing, not data error |
-| **Imputation plan** | Column-specific strategy from 8 options, with a leakage-safe fit scope |
-| **Leakage-safe protocol** | Confirms all statistics are fit on train only, never on predict |
-| **3 diagnostic figures** | Missingness bar chart, pattern matrix, target signal by missingness |
-| **Markdown report** | Human-readable narrative summary of all findings |
+AI Missingness Auditor is a reusable statistical skill for autonomous data-science agents and interactive analysts. Given a CSV or pandas DataFrame, it profiles missingness, surfaces mechanism clues, detects structural absence patterns, and writes a leakage-safe imputation plan before any values are filled.
 
----
+## Why This Exists
 
-## Why diagnosis matters before imputation
+Missing values are often treated as a mechanical cleanup step: run a median imputer, add a model, move on. That is risky for agentic analysis because the missing value can be the statistical signal.
 
-Skipping diagnosis leads to three common errors:
+This skill forces the agent to diagnose first:
 
-1. **Mean-imputing a structurally absent feature** — e.g., filling `facility_quality=NaN` (facility doesn't exist) with the mean quality creates a meaningless row. The correct fill is `"NONE"` or `0`.
-2. **Ignoring MAR missingness** — if `income` is missing for low-education rows and you impute without an indicator column, the model never learns that the patient who refused to report income is different from one who did.
-3. **Leakage** — computing the training-set median on the full dataset (including predict rows) inflates apparent model performance on held-out data.
+| Risk | What can go wrong | How the auditor responds |
+|---|---|---|
+| Structural missingness | `facility_quality` is `NaN` because no facility exists, not because a value was lost. | Detects categorical-NA plus numeric-zero companion patterns and recommends structural tokens or zero fills with indicators. |
+| Target-associated missingness | A feature is missing more often in high-risk or high-outcome rows. | Preserves the missingness signal with indicator columns and evidence in the plan. |
+| Train/test leakage | Median, mode, group median, or model imputation parameters are fit on the full dataset. | Records `fit_on: train_only` and applies fitted statistics to prediction data without refitting. |
 
-This auditor catches all three.
+## What It Does
 
----
+| Component | Output | Why it matters |
+|---|---|---|
+| Missingness profile | Per-column missing rate, severity, dtype, cardinality, target flag | Establishes the size and location of the problem. |
+| Mechanism audit | MCAR-compatible, MAR-like, group-dependent, target-associated, or insufficient-evidence clues | Gives the agent a statistical reason for each imputation choice. |
+| Structural detector | Pairs such as categorical NA with numeric zero/absence | Separates "the thing does not exist" from "the value was not collected." |
+| Imputation planner | Column-level strategy, indicator flag, reason, fit scope | Produces a machine-readable action plan for downstream agents. |
+| Leakage check | Protocol and warnings for train/predict usage | Keeps preprocessing statistics out of held-out or prediction rows. |
+| Visual diagnostics | Missingness bar chart, pattern matrix, target signal chart | Makes the evidence inspectable by humans. |
+| Report writer | Markdown report plus JSON logs | Leaves a reproducible audit trail. |
 
-## Missingness mechanisms
+## Demo Walkthrough
 
-| Label | Meaning | Imputation implication |
-|-------|---------|----------------------|
-| **MCAR-compatible** | No correlation with other features or target | Simple median/mode fill is safe |
-| **MAR-like evidence** | Correlated with at least one observed feature | Add a missing indicator so the model can learn the pattern |
-| **MNAR/structural concern** | Correlated with the target column | Add indicator; consider whether the column itself is informative |
+The bundled demo contains **1,000 rows**, **7 columns**, **4 columns with missing values**, and an **11.0% overall missing rate**. It is designed to exercise four different missingness patterns in one small dataset.
 
-These are **clues from correlation patterns**, not causal assignments. Use domain knowledge to confirm.
+![AI Missingness Auditor visualization tab](visual.png)
 
----
+| Column | Missing rate | Mechanism clue | Recommended strategy |
+|---|---:|---|---|
+| `age` | 10.1% | MCAR-compatible | `numeric_median_plus_indicator` |
+| `income` | 17.7% | Group-dependent missingness by `education_level` | `groupwise_numeric_median_plus_indicator` |
+| `risk_score` | 11.1% | Target-associated missingness | `numeric_median_plus_indicator` |
+| `facility_quality` | 37.8% | Structural absence concern with `facility_area` | `structural_none_token_plus_indicator` |
 
-## Web demo quickstart
+The visual diagnostics show both the scale of missingness and whether missingness itself is associated with the selected target. In the demo, `risk_score` missingness carries strong target signal, so the plan keeps a missing indicator instead of silently smoothing it away.
+
+## Imputation Plan
+
+The plan is explicit enough for a downstream modeling agent to apply without rerunning the full audit. Users can accept the recommended plan or override individual strategies inside the Streamlit interface.
+
+![AI Missingness Auditor strategy override](imputation.png)
+
+| Strategy | When it is used |
+|---|---|
+| `no_imputation_needed` | Column is fully observed or is the target column. |
+| `numeric_median` | Numeric column with low-risk missingness where an indicator is not needed. |
+| `numeric_median_plus_indicator` | Numeric column with moderate missingness, MAR-like evidence, or target-associated missingness. |
+| `groupwise_numeric_median_plus_indicator` | Numeric column whose missingness is concentrated in categorical groups. |
+| `categorical_missing_token` | Categorical column where an explicit missing token is preferable to mode fill. |
+| `categorical_missing_token_plus_indicator` | Categorical column where missingness itself should be preserved as a feature. |
+| `structural_none_token_plus_indicator` | Categorical structural absence, such as "no facility" encoded as `NaN`. |
+| `structural_zero_plus_indicator` | Numeric structural absence where zero is supported by companion-column evidence. |
+| `drop_column` | Extremely sparse columns where the missingness rate is too high for a stable feature. |
+
+## Agent Design and Architecture
+
+| Component | What it does |
+|---|---|
+| Brain / LLM | Claude is optional in the Streamlit demo; it narrates findings, chooses useful charts, explains mechanisms, and suggests alternatives. The core statistical audit also runs without an LLM. |
+| Memory | JSON logs and Markdown reports preserve profile, mechanism, structural, leakage, and plan outputs across calls. |
+| Planning | The planner combines missingness rates, dtype/cardinality, mechanism clues, structural evidence, and leakage rules into column-level imputation decisions. |
+| Action | Python package, CLI, and Streamlit UI invoke profilers, auditors, detector, planner, imputer, visualizer, and report writer. |
+| Execution | Local Python runtime or Streamlit Cloud; no external dataset is required for the bundled demo. |
+| Observation | The agent inspects tables, JSON evidence, diagnostic figures, before/after imputation summaries, and downloadable artifacts. |
+| Response | Final output is a human-readable report plus machine-readable `imputation_plan.json` and optional imputed CSVs. |
+
+```mermaid
+flowchart LR
+    A["CSV or pandas DataFrame"] --> B["Missingness profile"]
+    B --> C["Mechanism audit"]
+    B --> D["Structural detector"]
+    C --> E["Imputation planner"]
+    D --> E
+    E --> F["Leakage-safe check"]
+    F --> G["imputation_plan.json"]
+    F --> H["missing_data_report.md"]
+    F --> I["Diagnostic figures"]
+    E --> J["Optional imputed data"]
+```
+
+## Use It
+
+### Streamlit demo
 
 ```bash
 pip install -r requirements.txt
 pip install -e .
-python examples/make_demo_missingness_data.py   # creates examples/demo_missingness.csv
 streamlit run app.py
 ```
 
-Then open `http://localhost:8501` in your browser.
+Then open `http://localhost:8501`, load the demo dataset or upload a CSV, select a target column if available, and run the audit.
 
-**What the app does:**
-1. Upload a CSV or load the built-in demo dataset (600 rows, 4 missingness types)
-2. Select the target column
-3. Click **Run Audit** — results appear in 5 tabs: Profile, Mechanisms, Structural, Imputation Plan, Figures
-4. Click **Apply Imputation** to see the imputed DataFrame in-browser
-5. Download the markdown report, `imputation_plan.json`, and imputed CSVs
+### CLI
 
----
-
-## CLI quickstart
-
-Single dataset:
 ```bash
 python -m missingness_auditor.cli \
   --data examples/demo_missingness.csv \
   --target target \
-  --out outputs/demo_missingness
+  --out outputs/demo_missingness/ \
+  --json-summary
 ```
 
-Train / predict split (leakage-safe):
+For a train/predict split:
+
 ```bash
 python -m missingness_auditor.cli \
   --train train.csv \
   --predict predict.csv \
   --target target \
-  --out outputs/
+  --out outputs/missingness_audit/
 ```
 
-JSON summary to stdout (for piping):
-```bash
-python -m missingness_auditor.cli --data data.csv --out /tmp/out --json-summary
-```
-
----
-
-## Worked example — challenge data shape (state × week overdose rates)
-
-A synthetic panel dataset shaped like the STAI-X 2026 problem (suspected nonfatal
-overdose ED-visit rates, observed weekly across states) exercises every capability on
-the kind of data the challenge targets:
-
-```bash
-python examples/overdose/run_overdose_demo.py
-```
-
-| Column | Missingness it embeds | Auditor response |
-|--------|----------------------|------------------|
-| `ed_visit_rate` | a few states under-report some weeks | **groupwise per-state** median + indicator |
-| `naloxone_admin_rate` | multi-week reporting outages | **time-series ffill/bfill** + indicator |
-| `subprogram_type` | absent where no sub-program exists | **structural `NONE` token** + indicator |
-| `ed_visit_rate` | the highest-rate weeks hide themselves | flagged **fragile** by MNAR sensitivity (tips at \|δ\|=0.5 SD) |
-
-The data is **synthetic and illustrative** — generated from random numbers, containing
-no real surveillance data and **not** the official competition dataset (the challenge
-permits only official data). It exists solely to demonstrate the auditor on the
-problem's *shape*. See `examples/overdose/make_overdose_demo.py`.
-
----
-
-## Python API
+### Python API
 
 ```python
+import pandas as pd
 from missingness_auditor import MissingnessAuditor
 
-auditor = MissingnessAuditor(df, predict_df=predict_df, target_col="target")
-results = auditor.run()               # pure computation, no disk writes
-auditor.save_outputs(results, "outputs/")  # writes 9 files
+df = pd.read_csv("examples/demo_missingness.csv")
 
-# Apply the plan (leakage-safe: fit on train, apply to predict)
-df_train_imputed, df_predict_imputed = auditor.apply_imputation(
-    df, results["imputation_plan"], df_predict
-)
+auditor = MissingnessAuditor(df, target_col="target")
+results = auditor.run()
+auditor.save_outputs(results, "outputs/demo_missingness")
+
+imputed_df = auditor.apply_imputation(df, results["imputation_plan"])
 ```
 
----
+## Outputs
 
-## Example output — demo dataset
+Each saved audit produces JSON logs, figures, and a Markdown report.
 
-The demo dataset (`examples/demo_missingness.csv`, 600 rows) has four missingness types:
+```text
+outputs/
+  logs/
+    missingness_profile.json
+    missingness_mechanism_audit.json
+    structural_missingness_audit.json
+    imputation_plan.json
+    leakage_safe_imputation_check.json
+  figures/
+    missingness_bar.png
+    pattern_matrix.png
+    target_signal.png
+    missing_correlation.png
+  reports/
+    missing_data_report.md
+```
 
-| Column | Missing Rate | Mechanism | Strategy |
-|--------|-------------|-----------|----------|
-| `age` | ~7% | MCAR-compatible | `numeric_median` |
-| `income` | ~35% | MAR-like (correlated with `education_level`) | `numeric_median_plus_indicator` |
-| `risk_score` | ~29% | MNAR/structural concern (missing when `target==1`) | `numeric_median_plus_indicator` |
-| `facility_quality` | ~35% | Structural (None when `facility_area==0`) | `structural_none_or_zero` |
-
-After imputation: 0 missing values remain; 3 indicator columns added (`income_was_missing`,
-`risk_score_was_missing`, `facility_quality_was_missing`).
-
----
-
-## How agents use `imputation_plan.json`
-
-The plan is the primary machine-readable output for downstream LLM agents:
+Compact `imputation_plan.json` example:
 
 ```json
 {
   "columns": {
     "income": {
-      "strategy": "numeric_median_plus_indicator",
+      "strategy": "groupwise_numeric_median_plus_indicator",
       "add_missing_indicator": true,
-      "reason": "mechanism='MAR-like evidence'_or_moderate_missing_rate",
-      "fit_on": "train_only"
+      "reason": "group_dependent_missingness_by_feature='education_level'",
+      "fit_on": "train_only",
+      "mechanism_label": "group-dependent missingness",
+      "group_col": "education_level"
     },
     "risk_score": {
       "strategy": "numeric_median_plus_indicator",
       "add_missing_indicator": true,
-      "reason": "mechanism='MNAR/structural concern'_or_moderate_missing_rate",
-      "fit_on": "train_only"
+      "reason": "mechanism='target-associated missingness'_or_moderate_missing_rate",
+      "fit_on": "train_only",
+      "mechanism_label": "target-associated missingness"
+    },
+    "facility_quality": {
+      "strategy": "structural_none_token_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "structural_absence_categorical_na_encodes_absence",
+      "fit_on": "train_only",
+      "mechanism_label": "structural absence concern"
     }
   },
   "summary": {
-    "strategy_counts": { "numeric_median": 1, "numeric_median_plus_indicator": 2, ... },
-    "columns_needing_missing_indicator": ["income", "risk_score", "facility_quality"],
-    "columns_to_drop": []
+    "n_columns_to_impute": 4,
+    "columns_needing_missing_indicator": [
+      "age",
+      "income",
+      "risk_score",
+      "facility_quality"
+    ]
   }
 }
 ```
 
-An agent reads this file and applies the plan without needing to re-run the audit:
+## Statistical Notes
 
-```python
-import json
-from missingness_auditor.imputer import Imputer
+- Mechanism labels are **observational clues**, not causal proof. MCAR, MAR, and MNAR cannot be confirmed from a single observed dataset alone.
+- Missingness associated with observed features or the target should usually be preserved with a missingness indicator.
+- All imputation statistics must be fit on training data only. Prediction or test rows should receive the fitted statistic, never influence it.
+- Single imputation is practical for ML feature engineering, but it underestimates uncertainty for formal statistical inference. For confidence intervals, hypothesis tests, or publication-grade inference, consider full multiple imputation such as MICE with Rubin's rules.
+- Structural absence detection is evidence-based but still heuristic. Domain knowledge should override the plan when the semantics of a column are known.
 
-with open("outputs/logs/imputation_plan.json") as f:
-    plan = json.load(f)
+## Award C Submission Info
 
-df_train_imputed = Imputer().apply(df_train, plan)
-```
+> **Team info**
+> | Legal name | Affiliation | Institutional email | Kaggle username |
+> |---|---|---|---|
+> | [Name 1] | [University / Company / Independent] | [email] | [kaggle_user] |
+> | [Name 2] | [University / Company / Independent] | [email] | [kaggle_user] |
+>
+> **Registered team name:** [TeamName]
 
----
+**GitHub repository:** [https://github.com/yuqicVicky/BIG_S2_A_awardC](https://github.com/yuqicVicky/BIG_S2_A_awardC)  
+**Demo link:** [https://aimissingnessauditor.streamlit.app/](https://aimissingnessauditor.streamlit.app/)  
+**Kaggle discussion:** [STAI-X Challenge 2026 discussions](https://www.kaggle.com/competitions/stai-x-challenge-2026/discussion?sort=hotness)
 
-## Running tests
-
-```bash
-pip install -e .
-pytest tests/ -v
-```
-
-30 tests across 7 test files — all self-contained, no external downloads. The suite
-targets the guarantees the skill advertises (not coverage for its own sake):
-
-| Test file | What it proves |
-|-----------|----------------|
-| `test_hard_guards.py` | Target column is excluded from the plan and its values are never modified — including inside the MICE engine |
-| `test_leakage_safe.py` | Fill statistics come from **train only**: injecting extreme values into the predict frame does not change the fill (median and group-median paths) |
-| `test_structural.py` | Structural absence is filled with `NONE`/`0` + indicator, never the mean/mode |
-| `test_strategies_run.py` | Every strategy (incl. MICE, time-series, groupwise) applies with no error and zero residual nulls |
-| `test_mice.py` | Rubin pooling inflates variance over single imputation (`T > Ū`, `FMI ∈ (0,1)`); MICE draws differ |
-| `test_sensitivity.py` | MNAR delta-adjustment finds the tipping point for fragile columns and reports robust ones as robust |
-| `test_no_hardcoding.py` | No domain-specific column names appear in `src/` code logic (AST-checked, docstrings excluded) |
-
----
-
-## Streamlit Cloud deployment
-
-1. Push this repo to GitHub
-2. Go to [share.streamlit.io](https://share.streamlit.io) → New app
-3. Set main file to `app.py`
-4. Set requirements file to `requirements.txt`
-5. Set packages to install: add a `packages.txt` with no content (or leave default)
-
-The app will use the demo CSV bundled in `examples/`. No external data is needed.
-
----
-
-## Outputs per run
-
-```
-outputs/
-├── logs/
-│   ├── missingness_profile.json          per-column rates, severity, dtype
-│   ├── missingness_mechanism_audit.json  MCAR/MAR-like/MNAR clue per column
-│   ├── structural_missingness_audit.json structural pair detection results
-│   ├── imputation_plan.json              per-column strategy + fit scope
-│   ├── leakage_safe_imputation_check.json leakage risk findings + protocol
-│   ├── mice_pooling.json                 multiple-imputation Rubin pooling (inference)
-│   └── mnar_sensitivity.json             delta-adjustment MNAR tipping points
-├── figures/
-│   ├── missingness_bar.png               missing rate bar chart by column
-│   ├── pattern_matrix.png                row × column presence/absence matrix
-│   ├── target_signal.png                 target mean: missing vs present rows
-│   ├── decision_flow.png                 CONSORT-style imputation decision flow
-│   └── mnar_tipping_point.png            delta-adjustment sensitivity trajectories
-├── reports/
-│   ├── missing_data_report.md            human-readable narrative summary
-│   └── missing_data_report.pdf           methods-appendix PDF (attach to a paper)
-├── reproduce_imputation.py               standalone, self-verifying reproduction script
-└── source_data.csv                       frozen copy of the input for reproduction
-```
-
-### Reproducibility & inference-grade artifacts
-
-- **`reproduce_imputation.py`** is standalone (no dependency on this package): it
-  embeds the plan, re-applies it with train-only statistics, and **verifies its own
-  output** (no residual nulls, target untouched, indicators binary). Run it months
-  later to reproduce the cleaned dataset, or attach it to a methods appendix.
-- **`mice_pooling.json`** reports the pooled mean, the naive single-imputation SE,
-  the multiple-imputation SE, and the **fraction of missing information** per column —
-  the variance single imputation hides (Rubin 1987; van Buuren FIMD Ch2).
-- **`mnar_sensitivity.json`** + `mnar_tipping_point.png` report the **tipping point**:
-  how large an MNAR departure (in SD units) would overturn a conclusion drawn under
-  MAR. Small tipping point ⇒ the result hinges on an untestable assumption (FIMD Ch9).
-
----
-
-## Imputation strategies
-
-| Strategy | When used |
-|----------|-----------|
-| `no_imputation_needed` | Column is fully observed |
-| `numeric_median` | MCAR-compatible, <10% missing, numeric |
-| `numeric_median_plus_indicator` | MAR-like, MNAR concern, or ≥10% missing, numeric |
-| `categorical_missing_token` | Categorical, <10% missing |
-| `categorical_mode_plus_indicator` | Categorical, ≥10% missing |
-| `structural_none_or_zero` | Structural absence pattern detected |
-| `time_series_ffill_bfill_plus_indicator` | Temporally-ordered measurement (forward/backward fill) |
-| `drop_column` | >80% missing |
-| `model_based_imputation_optional` / `mice_multiple_imputation` | Complex MAR — leakage-safe `IterativeImputer` (the MICE engine), not a median fallback |
-
-For **statistical inference** (not just ML features), the auditor additionally runs
-full Multiple Imputation by Chained Equations and pools the results with **Rubin's
-rules**, and runs an **MNAR delta-adjustment sensitivity analysis** — see below.
-
----
-
-## Award C — what this demonstrates
-
-This skill shows how a Claude Code agent can:
-
-1. **Diagnose before acting** — audit missingness mechanisms before any imputation, matching what a careful data scientist would do
-2. **Produce leakage-safe plans** — fit statistics on train only, apply to predict without re-fitting; the plan explicitly records `"fit_on": "train_only"` for every column
-3. **Handle structural missingness** — distinguish "facility doesn't exist" (fill with NONE/0) from "data entry error" (impute the real value)
-4. **Generate machine-readable outputs** — `imputation_plan.json` is designed to be read by a downstream agent in the next pipeline step
-5. **Work on any dataset** — no domain-specific column names are hardcoded anywhere in `src/`
-
-The web demo makes all of this interactive without requiring any code from the user.
+This repository contributes a reusable statistical skill for Award C: a pre-imputation missingness auditor that other participants can adopt in their own data-cleaning agents, validation pipelines, or Streamlit demos.
