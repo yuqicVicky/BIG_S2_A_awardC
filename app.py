@@ -678,12 +678,140 @@ plan = results["imputation_plan"]
 sc = plan.get("summary", {}).get("strategy_counts", {})
 
 
+def _fallback_insight(section: str) -> dict:
+    """Deterministic, template narrative built straight from the audit JSON.
+
+    Used whenever no LLM result is available (no API key, or a call failed) so every
+    panel still says something useful. The LLM *upgrades* this prose when a key is
+    present; the dict shape matches what `_render_insight` expects.
+    """
+    overall = summary.get("overall_missing_rate", 0.0)
+    n_missing = summary.get("columns_with_any_missing", 0)
+    total = summary.get("total_columns", 0)
+    miss = {c: i for c, i in profile["columns"].items() if i.get("missing_rate", 0) > 0}
+    worst = max(miss.items(), key=lambda kv: kv[1]["missing_rate"], default=None)
+    sev = "high" if overall > 0.20 or any(
+        i.get("severity") in ("high", "critical") for i in miss.values()
+    ) else "medium" if overall > 0.05 else "low"
+
+    if section == "overview":
+        bullets = [
+            f"{n_missing} of {total} columns contain missing values "
+            f"(overall rate {overall:.1%}).",
+        ]
+        if worst:
+            bullets.append(
+                f"Most affected: `{worst[0]}` at {worst[1]['missing_rate']:.1%} "
+                f"({worst[1].get('severity', '—')} severity)."
+            )
+        lm = mech.get("little_mcar_test", {}) or {}
+        if lm.get("applicable") and lm.get("p_value", 1) < 0.05:
+            bullets.append(
+                f"Little's MCAR test rejects MCAR (p={lm['p_value']:.3g}) — treat "
+                "missingness as MAR and model it, don't drop rows."
+            )
+        return {
+            "severity": sev,
+            "headline": f"{n_missing} column(s) need attention before modeling.",
+            "bullets": bullets,
+            "recommendation": (
+                "Review the per-column plan below; add missing indicators for any "
+                "MAR-like or target-associated column."
+            ),
+        }
+
+    if section == "profile":
+        flagged = [c for c, i in miss.items()
+                   if i.get("severity") in ("high", "critical")]
+        bullets = [f"`{c}`: {i['missing_rate']:.1%} ({i.get('severity')})"
+                   for c, i in sorted(miss.items(),
+                                      key=lambda kv: -kv[1]["missing_rate"])[:5]]
+        return {
+            "severity": "high" if flagged else sev,
+            "headline": (f"{len(flagged)} high/critical-severity column(s)."
+                         if flagged else "Missingness is low-to-moderate across columns."),
+            "bullets": bullets or ["No columns exceed the trace threshold."],
+            "recommendation": (
+                f"Columns above ~25% ({', '.join(f'`{c}`' for c in flagged)}) warrant "
+                "a missing indicator and possibly multiple imputation."
+                if flagged else "Simple median/token fills are defensible here."
+            ),
+        }
+
+    if section == "mechanisms":
+        counts: dict[str, int] = {}
+        for i in mech["columns"].values():
+            counts[i["mechanism_label"]] = counts.get(i["mechanism_label"], 0) + 1
+        tgt_cols = [c for c, i in mech["columns"].items() if i.get("target_signal")]
+        lm = mech.get("little_mcar_test", {}) or {}
+        bullets = [f"{v}× {k}" for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+        if lm.get("applicable"):
+            verdict = "rejects MCAR" if lm.get("p_value", 1) < 0.05 else "does not reject MCAR"
+            bullets.append(f"Little's MCAR test {verdict} (p={lm.get('p_value'):.3g}).")
+        return {
+            "severity": "high" if tgt_cols else "medium",
+            "headline": ("Missingness is associated with the target — bias risk."
+                         if tgt_cols else "No target-associated missingness detected."),
+            "bullets": bullets,
+            "recommendation": (
+                f"Add indicators for target-associated columns "
+                f"({', '.join(f'`{c}`' for c in tgt_cols)}) and include the target in "
+                "any imputation model for inference."
+                if tgt_cols else
+                "Standard MAR-based imputation with indicators is appropriate."
+            ),
+        }
+
+    if section == "structural":
+        pairs = struct.get("structural_pairs", [])
+        return {
+            "severity": "medium",
+            "headline": f"{len(pairs)} structural absence pattern(s) detected.",
+            "bullets": [f"`{p['categorical_col']}` → `{p['numeric_col']}`: "
+                        f"{p.get('pattern', 'absence encodes a real zero/none')}"
+                        for p in pairs] or ["None found."],
+            "recommendation": (
+                "Fill structural absence with NONE/0 + an indicator — never the "
+                "mean/mode, which would invent a value for something that doesn't exist."
+            ),
+        }
+
+    if section == "plan":
+        counts = plan.get("summary", {}).get("strategy_counts", {})
+        ind = plan.get("summary", {}).get("columns_needing_missing_indicator", [])
+        mi = [c for c, e in plan["columns"].items() if e.get("mi_upgrade_recommended")]
+        bullets = [f"{v}× `{k}`" for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+        if ind:
+            bullets.append(f"Missing indicators: {', '.join(f'`{c}`' for c in ind)}")
+        if mi:
+            bullets.append(f"MI upgrade advised: {', '.join(f'`{c}`' for c in mi)}")
+        return {
+            "severity": "medium" if mi else "low",
+            "headline": "Per-column, leakage-safe plan ready (fit on train only).",
+            "bullets": bullets or ["No imputation needed."],
+            "recommendation": (
+                "Fit every statistic on training data only; for inference upgrade the "
+                f"flagged columns to MICE ({', '.join(f'`{c}`' for c in mi)})."
+                if mi else
+                "Fit every statistic on training data only, then apply to predict."
+            ),
+        }
+
+    return {"severity": "low", "headline": "", "bullets": [], "recommendation": ""}
+
+
 def _insight(key: str, label: str = "Claude's Analysis") -> None:
     data = ai_sections.get(key)
     if data is None:
-        if not api_key_input:
-            st.caption("_Add an API key in the sidebar for AI-guided insights._")
-        return
+        # No LLM result (no key or a failed call) — render a deterministic fallback
+        # so the panel is never empty.
+        try:
+            data = _fallback_insight(key)
+        except Exception:
+            if not api_key_input:
+                st.caption("_Add an API key in the sidebar for richer AI-guided insights._")
+            return
+        label = label if api_key_input else f"{label} (rule-based)"
     _render_insight(data, label)
 
 
@@ -745,17 +873,47 @@ with tab_audit:
 
     st.subheader("Missingness Mechanisms")
     st.caption(
-        "MCAR-compatible: no detectable correlation. "
-        "MAR-like: correlated with other observed features. "
-        "Target-associated: correlated with the outcome — bias risk. "
-        "Structural absence: driven by categorical group membership."
+        "Labels are driven by significance tests, not bare correlation thresholds: "
+        "Little's MCAR test globally, a logistic-regression likelihood-ratio test for "
+        "MAR (missingness vs observed covariates), a χ² test for group-dependence, and "
+        "a point-biserial/χ² test for target association."
     )
+
+    # Global Little's MCAR verdict
+    _lm = mech.get("little_mcar_test", {}) or {}
+    if _lm.get("applicable"):
+        _p = _lm.get("p_value", 1.0)
+        if _p < 0.05:
+            st.error(
+                f"**Little's MCAR test:** χ²={_lm.get('statistic')}, df={_lm.get('df')}, "
+                f"p={_p:.4g} → **rejects MCAR**. Missingness is not completely at random; "
+                "treat as MAR and model the missingness."
+            )
+        else:
+            st.success(
+                f"**Little's MCAR test:** χ²={_lm.get('statistic')}, df={_lm.get('df')}, "
+                f"p={_p:.4g} → no global evidence against MCAR."
+            )
+    elif _lm.get("reason"):
+        st.caption(f"_Little's MCAR test not run: {_lm['reason']}._")
+
+    def _mech_pvalue(info: dict) -> str:
+        lbl = info.get("mechanism_label", "")
+        if lbl == "group-dependent missingness":
+            p = (info.get("group_dependency_evidence") or {}).get("chi2_p_value")
+        elif lbl == "target-associated missingness":
+            p = (info.get("target_test") or {}).get("p_value")
+        else:
+            p = (info.get("mar_test") or {}).get("p_value")
+        return f"{p:.4g}" if p is not None else "—"
+
     st.dataframe(
         pd.DataFrame(
             [
                 {
                     "Column": col,
                     "Mechanism": info["mechanism_label"],
+                    "Test p-value": _mech_pvalue(info),
                     "Target Signal": "Yes" if info.get("target_signal") else "No",
                     "Target Corr": (
                         f"{info['target_correlation']:.3f}"

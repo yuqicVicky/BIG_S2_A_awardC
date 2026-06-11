@@ -93,6 +93,8 @@ class Imputer:
             if strategy in ("groupwise_numeric_median_plus_indicator", "group_median"):
                 group_col = entry.get("group_col")
                 global_median = df_train[col].median()    # fit on train
+                if pd.isna(global_median):                # all-null column guard
+                    global_median = 0.0
                 if group_col and group_col in df_train.columns:
                     group_map = df_train.groupby(group_col)[col].median().to_dict()
                     df_train[col] = df_train[col].fillna(
@@ -114,12 +116,16 @@ class Imputer:
                 df_train[col] = df_train[col].ffill().bfill()
                 # Any remaining NaN (all-null column) → global median fallback
                 fallback = df_train[col].median()
+                if pd.isna(fallback):                      # all-null column guard
+                    fallback = 0.0
                 df_train[col] = df_train[col].fillna(fallback)
                 if df_predict is not None and col in df_predict.columns:
                     df_predict[col] = df_predict[col].ffill().bfill().fillna(fallback)
 
             elif strategy in ("numeric_median", "numeric_median_plus_indicator"):
                 fill = df_train[col].median()              # fit on train
+                if pd.isna(fill):                          # all-null column guard
+                    fill = 0.0
                 df_train[col] = df_train[col].fillna(fill)
                 if df_predict is not None and col in df_predict.columns:
                     df_predict[col] = df_predict[col].fillna(fill)

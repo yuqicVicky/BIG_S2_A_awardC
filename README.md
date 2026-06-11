@@ -18,7 +18,16 @@
 
 **Quick links:** [Why this exists](#why-this-exists) · [Demo walkthrough](#demo-walkthrough) · [Architecture](#agent-design-and-architecture) · [Use it](#use-it) · [Award C draft](AWARD_C_POST.md)
 
-![AI Missingness Auditor Streamlit report](figures/main.png)
+| Output | Description |
+|--------|-------------|
+| **Missingness profile** | Per-column missing rates, severity labels (trace/low/moderate/high), dtype category |
+| **Mechanism clues** | MCAR-compatible / MAR-like / MNAR/structural concern — statistical clues, not causal claims |
+| **Structural missingness** | Detects `(categorical NA → numeric companion is 0)` patterns — absence of a thing, not data error |
+| **Imputation plan** | Column-specific strategy (full ladder in `references/strategies.md`), with a leakage-safe fit scope |
+| **Leakage-safe protocol** | Confirms all statistics are fit on train only, never on predict |
+| **Mechanism tests** | Little's MCAR test (global) + per-column logistic-LR / χ² / point-biserial significance |
+| **Diagnostic figures** | Missingness bar chart, pattern matrix, target signal, decision flow, MNAR tipping point |
+| **Markdown report** | Human-readable narrative summary of all findings |
 
 AI Missingness Auditor is a reusable statistical skill for autonomous data-science agents and interactive analysts. Given a CSV or pandas DataFrame, it profiles missingness, surfaces mechanism clues, detects structural absence patterns, and writes a leakage-safe imputation plan before any values are filled.
 
@@ -143,7 +152,9 @@ python -m missingness_auditor.cli \
 import pandas as pd
 from missingness_auditor import MissingnessAuditor
 
-df = pd.read_csv("examples/demo_missingness.csv")
+auditor = MissingnessAuditor(df, predict_df=predict_df, target_col="target")
+results = auditor.run()               # pure computation, no disk writes
+auditor.save_outputs(results, "outputs/")  # writes logs, figures, reports + reproduction artifacts
 
 auditor = MissingnessAuditor(df, target_col="target")
 results = auditor.run()

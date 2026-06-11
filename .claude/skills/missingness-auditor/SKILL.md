@@ -1,5 +1,5 @@
 ---
-name: missingness-audit-planner
+name: missingness-auditor
 description: Diagnose and impute missing data before ML modeling. Triggers on: "nulls", "NaN errors", "clean CSV/parquet", "drop column?", "what to impute", "missing values", "prepare data for training". Handles file-based and in-session DataFrames. Profiles severity, detects MCAR/MAR-like/MNAR clues, finds structural absence, and recommends a leakage-safe per-column strategy. Hard guards: target column is never imputed; imputers are never fit on predict data. Trigger even on vague missing-data questions.
 ---
 
@@ -157,16 +157,27 @@ If no `target_col` is known, omit it — mechanism detection will skip target co
 Read three JSON files in order:
 
 1. `outputs/logs/missingness_profile.json` → `columns_with_missing`, per-column `severity`, `missing_rate`
-2. `outputs/logs/missingness_mechanism_audit.json` → per-column `mechanism_label`, `target_signal`
+2. `outputs/logs/missingness_mechanism_audit.json` → top-level `little_mcar_test` (global MCAR verdict) and per-column `mechanism_label`, `target_signal`, `mar_test` (logistic-LR p-value), `target_test`, and `group_dependency_evidence.chi2_p_value`
 3. `outputs/logs/imputation_plan.json` → per-column `strategy`, `add_missing_indicator`, `group_col`, `mi_upgrade_recommended`
 
 Schema reference: `references/imputation_plan_schema.md`.
 
+**Report the global Little's MCAR test first** (`little_mcar_test`): if `applicable` and
+`p_value < 0.05`, state that the data is *not* missing completely at random (reject MCAR)
+and MAR is the working assumption; otherwise note no global evidence against MCAR. The
+labels below are **driven by significance tests** (logistic-regression likelihood-ratio
+for MAR, χ² for group-dependence, point-biserial/χ² for target association) — not bare
+correlation thresholds — so quote the p-value.
+
 Surface only columns with missing values, sorted by `missing_rate` descending, max 10 rows:
 
-| Column | Inferred Meaning | Missing Rate | Severity | Mechanism | Strategy | Group Col | Add Indicator | MI Upgrade? |
-|--------|-----------------|-------------|----------|-----------|----------|-----------|--------------|-------------|
-| ...    | ...             | ...         | ...      | ...       | ...      | ...       | ...          | ...         |
+| Column | Inferred Meaning | Missing Rate | Severity | Mechanism | Test p-value | Strategy | Group Col | Add Indicator | MI Upgrade? |
+|--------|-----------------|-------------|----------|-----------|--------------|----------|-----------|--------------|-------------|
+| ...    | ...             | ...         | ...      | ...       | ...          | ...      | ...       | ...          | ...         |
+
+`Test p-value` is the p-value of the test that drove the label: `mar_test.p_value`
+(MAR-like), `target_test.p_value` (target-associated), or
+`group_dependency_evidence.chi2_p_value` (group-dependent).
 
 `Inferred Meaning` comes from the semantic table built in Step 1.5 — reproduce it here verbatim so the user can verify the interpretation before acting on the plan. `Group Col` is non-empty only when `grouping_applied: true` in `evidence`; show the column name so the user can verify the grouping makes sense.
 
@@ -328,11 +339,15 @@ def agent_pre_imputation_audit(df_train, target_col):
 
 This skill covers:
 1. Missingness profile (counts, rates, severity, dtype)
-2. Mechanism clue detection (MCAR / MAR-like / MNAR)
+2. Mechanism detection driven by significance tests — Little's MCAR test globally,
+   logistic-regression likelihood-ratio for MAR, χ² for group-dependence,
+   point-biserial/χ² for target association (MCAR / MAR-like / target-associated /
+   group-dependent / structural concern)
 3. Structural missingness detection
-4. Column-specific imputation recommendation
+4. Column-specific imputation recommendation (full strategy ladder in `references/strategies.md`)
 5. Leakage-safe imputation execution
-6. Three diagnostic figures
+6. Inference-grade analysis — MICE + Rubin pooling and MNAR delta-adjustment sensitivity
+7. Five diagnostic figures (bar, pattern matrix, target signal, decision flow, MNAR tipping point)
 
 Strategy reference: `references/strategies.md`
 Schema reference: `references/imputation_plan_schema.md`

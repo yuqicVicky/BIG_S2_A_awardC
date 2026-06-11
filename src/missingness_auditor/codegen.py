@@ -47,6 +47,8 @@ def apply_plan(df_train, plan, df_predict=None):
         if strategy in ("groupwise_numeric_median_plus_indicator", "group_median"):
             group_col = entry.get("group_col")
             global_median = df_train[col].median()
+            if pd.isna(global_median):
+                global_median = 0.0
             if group_col and group_col in df_train.columns:
                 gmap = df_train.groupby(group_col)[col].median().to_dict()
                 df_train[col] = df_train[col].fillna(df_train[group_col].map(gmap))
@@ -58,6 +60,8 @@ def apply_plan(df_train, plan, df_predict=None):
         elif strategy == "time_series_ffill_bfill_plus_indicator":
             df_train[col] = df_train[col].ffill().bfill()
             fallback = df_train[col].median()
+            if pd.isna(fallback):
+                fallback = 0.0
             df_train[col] = df_train[col].fillna(fallback)
             if df_predict is not None and col in df_predict.columns:
                 df_predict[col] = df_predict[col].ffill().bfill().fillna(fallback)
@@ -90,6 +94,8 @@ def apply_plan(df_train, plan, df_predict=None):
             # strategies all reduce to a leakage-safe median in this standalone
             # script (the package uses IterativeImputer for the model-based case).
             fill = df_train[col].median()
+            if pd.isna(fill):
+                fill = 0.0
             df_train[col] = df_train[col].fillna(fill)
             if df_predict is not None and col in df_predict.columns:
                 df_predict[col] = df_predict[col].fillna(fill)

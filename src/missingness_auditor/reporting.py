@@ -133,6 +133,24 @@ class ReportWriter:
             "Use these clues to inform — not dictate — imputation choices.",
             "",
         ]
+        # Global Little's MCAR test verdict (Little 1988).
+        _lm = mechanism_audit.get("little_mcar_test", {}) or {}
+        if _lm.get("applicable"):
+            _p = _lm.get("p_value", 1.0)
+            _verdict = (
+                "**rejects MCAR** (p < 0.05) — missingness is not completely at random; "
+                "treat as MAR and model the missingness."
+                if _p < 0.05 else
+                "**does not reject MCAR** (p ≥ 0.05) — no global evidence against MCAR."
+            )
+            lines += [
+                f"**Little's MCAR test (Little, 1988):** χ² = {_lm.get('statistic')}, "
+                f"df = {_lm.get('df')}, p = {_p:.4g} over {_lm.get('n_numeric_cols')} "
+                f"numeric column(s). The test {_verdict}",
+                "",
+            ]
+        elif _lm.get("reason"):
+            lines += [f"*Little's MCAR test not run: {_lm['reason']}.*", ""]
         _mech_descriptions = {
             "MCAR-compatible": (
                 "No significant correlation with other features or target. "
@@ -170,6 +188,35 @@ class ReportWriter:
         for lbl, cnt in sorted(label_counts.items(), key=lambda x: -x[1]):
             desc = _mech_descriptions.get(lbl, "")
             lines.append(f"- **{lbl}** ({cnt} column(s)): {desc}")
+        lines.append("")
+
+        # Per-column significance tests that drive each label (not bare thresholds).
+        def _driving_test(info: dict) -> tuple[str, str]:
+            lbl = info.get("mechanism_label", "")
+            if lbl == "group-dependent missingness":
+                p = (info.get("group_dependency_evidence") or {}).get("chi2_p_value")
+                return "χ² independence (vs group)", (f"{p:.4g}" if p is not None else "—")
+            if lbl == "target-associated missingness":
+                tt = info.get("target_test") or {}
+                p = tt.get("p_value")
+                return tt.get("method", "target test"), (f"{p:.4g}" if p is not None else "—")
+            mt = info.get("mar_test") or {}
+            p = mt.get("p_value")
+            method = "logistic LR (vs covariates)" if mt else "correlation (no test)"
+            return method, (f"{p:.4g}" if p is not None else "—")
+
+        lines += [
+            "**Significance tests behind each label** "
+            "(labels are driven by these p-values, with correlations kept as effect size):",
+            "",
+            "| Column | Mechanism | Driving test | p-value |",
+            "|--------|-----------|--------------|---------|",
+        ]
+        for col, info in col_mechanisms.items():
+            method, pstr = _driving_test(info)
+            lines.append(
+                f"| `{col}` | {info.get('mechanism_label', '—')} | {method} | {pstr} |"
+            )
         lines.append("")
 
         # Per-column LLM narratives (present when MechanismAuditor ran with llm_client)
