@@ -1,17 +1,10 @@
-<table>
-  <tr>
-    <td width="78%" valign="middle">
-      <h1>AI Missingness Auditor</h1>
-      <blockquote>
-        <strong>Award C Statistical Skill / Agent Module</strong><br>
-        A Claude-enhanced Streamlit demo for diagnosing missing data before imputation.
-      </blockquote>
-    </td>
-    <td width="22%" align="right" valign="top">
-      <img src="figures/staix.png" width="112" alt="STAI-X Challenge icon">
-    </td>
-  </tr>
-</table>
+<h1>
+  <img src="figures/staix.png" height="42" alt="STAI-X Challenge icon">
+  AI Missingness Auditor
+</h1>
+
+> **Award C Statistical Skill / Agent Module**  
+> A Claude-enhanced Streamlit demo for diagnosing missing data before imputation.
 
 [![Award C](https://img.shields.io/badge/Award%20C-Statistical%20Skill-ff4b4b)](#award-c-submission-info)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
