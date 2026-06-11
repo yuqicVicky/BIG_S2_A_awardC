@@ -18,6 +18,8 @@
 
 **Quick links:** [Why this exists](#why-this-exists) · [Demo walkthrough](#demo-walkthrough) · [Architecture](#agent-design-and-architecture) · [Use it](#use-it) · [Award C draft](AWARD_C_POST.md)
 
+![AI Missingness Auditor Streamlit report](figures/main.png)
+
 | Output | Description |
 |--------|-------------|
 | **Missingness profile** | Per-column missing rates, severity labels (trace/low/moderate/high), dtype category |
