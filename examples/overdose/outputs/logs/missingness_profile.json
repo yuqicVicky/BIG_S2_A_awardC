@@ -1,0 +1,107 @@
+{
+  "columns": {
+    "state": {
+      "n_total": 780,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "object",
+      "dtype_category": "categorical",
+      "unique_count": 15,
+      "cardinality": 15,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "week": {
+      "n_total": 780,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "int64",
+      "dtype_category": "numeric",
+      "unique_count": 52,
+      "cardinality": 52,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "population_100k": {
+      "n_total": 780,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "unique_count": 451,
+      "cardinality": 451,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "ed_visit_rate": {
+      "n_total": 780,
+      "n_missing": 113,
+      "missing_rate": 0.1449,
+      "severity": "low",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "unique_count": 539,
+      "cardinality": 539,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "naloxone_admin_rate": {
+      "n_total": 780,
+      "n_missing": 78,
+      "missing_rate": 0.1,
+      "severity": "low",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "unique_count": 647,
+      "cardinality": 647,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "subprogram_type": {
+      "n_total": 780,
+      "n_missing": 260,
+      "missing_rate": 0.3333,
+      "severity": "moderate",
+      "dtype": "object",
+      "dtype_category": "categorical",
+      "unique_count": 3,
+      "cardinality": 3,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    },
+    "copresent_subrate": {
+      "n_total": 780,
+      "n_missing": 0,
+      "missing_rate": 0.0,
+      "severity": "none",
+      "dtype": "float64",
+      "dtype_category": "numeric",
+      "unique_count": 380,
+      "cardinality": 380,
+      "is_high_cardinality": false,
+      "is_target": false,
+      "predict_missing_rate": null
+    }
+  },
+  "summary": {
+    "total_rows": 780,
+    "total_columns": 7,
+    "columns_with_any_missing": 3,
+    "total_missing_cells": 451,
+    "overall_missing_rate": 0.0826
+  },
+  "columns_with_missing": [
+    "ed_visit_rate",
+    "naloxone_admin_rate",
+    "subprogram_type"
+  ]
+}

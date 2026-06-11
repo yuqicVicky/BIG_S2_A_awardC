@@ -1,0 +1,64 @@
+{
+  "findings": [
+    {
+      "column": "state",
+      "strategy": "no_imputation_needed",
+      "leakage_risk": "none",
+      "leakage_note": "no_imputation_required",
+      "recommendation": "no_action"
+    },
+    {
+      "column": "week",
+      "strategy": "no_imputation_needed",
+      "leakage_risk": "none",
+      "leakage_note": "no_imputation_required",
+      "recommendation": "no_action"
+    },
+    {
+      "column": "population_100k",
+      "strategy": "no_imputation_needed",
+      "leakage_risk": "none",
+      "leakage_note": "no_imputation_required",
+      "recommendation": "no_action"
+    },
+    {
+      "column": "ed_visit_rate",
+      "strategy": "groupwise_numeric_median_plus_indicator",
+      "leakage_risk": "low",
+      "leakage_note": "statistics_fitted_on_train_only",
+      "recommendation": "fit_statistic_on_train_apply_to_predict"
+    },
+    {
+      "column": "naloxone_admin_rate",
+      "strategy": "time_series_ffill_bfill_plus_indicator",
+      "leakage_risk": "low",
+      "leakage_note": "statistics_fitted_on_train_only",
+      "recommendation": "fit_statistic_on_train_apply_to_predict"
+    },
+    {
+      "column": "subprogram_type",
+      "strategy": "structural_none_token_plus_indicator",
+      "leakage_risk": "low",
+      "leakage_note": "statistics_fitted_on_train_only",
+      "recommendation": "fit_statistic_on_train_apply_to_predict"
+    },
+    {
+      "column": "copresent_subrate",
+      "strategy": "no_imputation_needed",
+      "leakage_risk": "none",
+      "leakage_note": "no_imputation_required",
+      "recommendation": "no_action"
+    }
+  ],
+  "summary": {
+    "total_columns_checked": 7,
+    "high_leakage_risk": 0,
+    "medium_leakage_risk": 0,
+    "low_or_none_leakage_risk": 7
+  },
+  "global_protocol": {
+    "rule": "Fit all imputation statistics on training data only. Never use prediction/test data to compute medians, modes, or model imputation parameters.",
+    "sklearn_pattern": "use Pipeline([('imputer', SimpleImputer()), ('model', ...)]); pipeline.fit(X_train, y_train)",
+    "indicator_pattern": "use MissingIndicator(features='missing-only') before imputation in pipeline"
+  }
+}

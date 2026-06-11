@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 import pandas as pd
@@ -61,7 +62,7 @@ def main(argv=None):
     print(f"\n[MissingnessAuditor] Leakage risk: "
           f"high={lk.get('high_leakage_risk', 0)}, "
           f"medium={lk.get('medium_leakage_risk', 0)}")
-    print(f"[MissingnessAuditor] Report: {args.out}reports/missing_data_report.md")
+    print(f"[MissingnessAuditor] Report: {os.path.join(args.out, 'reports', 'missing_data_report.md')}")
 
     if args.json_summary:
         print(json.dumps(plan, indent=2))

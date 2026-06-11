@@ -1,0 +1,146 @@
+{
+  "columns": {
+    "ed_visit_rate": {
+      "mechanism_label": "group-dependent missingness",
+      "mechanism_evidence": "missingness_concentrated_in_categorical_groups",
+      "mar_robustness_note": "insufficient_evidence_to_assess",
+      "correlated_features": [],
+      "categorical_correlated_features": [
+        {
+          "feature": "state",
+          "correlation": 0.4615,
+          "high_missing_groups": {},
+          "all_group_rates": {
+            "AL": 0.462,
+            "AZ": 0.0,
+            "CA": 0.0,
+            "CO": 0.308,
+            "FL": 0.0,
+            "KY": 0.0,
+            "MA": 0.308,
+            "MI": 0.154,
+            "NC": 0.0,
+            "NY": 0.0,
+            "OH": 0.327,
+            "PA": 0.173,
+            "TX": 0.0,
+            "WA": 0.038,
+            "WV": 0.404
+          }
+        }
+      ],
+      "target_correlation": null,
+      "target_signal": false,
+      "group_dependency_evidence": {
+        "detected": true,
+        "top_categorical_feature": "state",
+        "max_missingness_spread": 0.4615,
+        "high_missing_groups": {}
+      },
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": null
+      },
+      "covariate_association_evidence": []
+    },
+    "naloxone_admin_rate": {
+      "mechanism_label": "MCAR-compatible",
+      "mechanism_evidence": "no_significant_correlation_found",
+      "mar_robustness_note": "likely_robust_per_collins2001",
+      "correlated_features": [],
+      "categorical_correlated_features": [],
+      "target_correlation": null,
+      "target_signal": false,
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": null
+      },
+      "covariate_association_evidence": []
+    },
+    "subprogram_type": {
+      "mechanism_label": "group-dependent missingness",
+      "mechanism_evidence": "missingness_concentrated_in_categorical_groups",
+      "mar_robustness_note": "mechanism_assumption_may_matter_consider_full_mi",
+      "correlated_features": [
+        {
+          "feature": "copresent_subrate",
+          "correlation": 0.7262
+        },
+        {
+          "feature": "naloxone_admin_rate",
+          "correlation": 0.1948
+        },
+        {
+          "feature": "population_100k",
+          "correlation": 0.1683
+        }
+      ],
+      "categorical_correlated_features": [
+        {
+          "feature": "state",
+          "correlation": 1.0,
+          "high_missing_groups": {
+            "AL": 1.0,
+            "CA": 1.0,
+            "MI": 1.0,
+            "NC": 1.0,
+            "OH": 1.0
+          },
+          "all_group_rates": {
+            "AL": 1.0,
+            "AZ": 0.0,
+            "CA": 1.0,
+            "CO": 0.0,
+            "FL": 0.0,
+            "KY": 0.0,
+            "MA": 0.0,
+            "MI": 1.0,
+            "NC": 1.0,
+            "NY": 0.0,
+            "OH": 1.0,
+            "PA": 0.0,
+            "TX": 0.0,
+            "WA": 0.0,
+            "WV": 0.0
+          }
+        }
+      ],
+      "target_correlation": null,
+      "target_signal": false,
+      "group_dependency_evidence": {
+        "detected": true,
+        "top_categorical_feature": "state",
+        "max_missingness_spread": 1.0,
+        "high_missing_groups": {
+          "AL": 1.0,
+          "CA": 1.0,
+          "MI": 1.0,
+          "NC": 1.0,
+          "OH": 1.0
+        }
+      },
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": null
+      },
+      "covariate_association_evidence": [
+        {
+          "feature": "copresent_subrate",
+          "correlation": 0.7262
+        },
+        {
+          "feature": "naloxone_admin_rate",
+          "correlation": 0.1948
+        },
+        {
+          "feature": "population_100k",
+          "correlation": 0.1683
+        }
+      ]
+    }
+  },
+  "note": "Mechanism labels are statistical clues from observational data only. They do not imply a definitive causal missingness mechanism. MCAR/MAR/MNAR cannot be confirmed from observational data alone. MAR is the recommended default assumption (van Buuren FIMD Ch5)."
+}

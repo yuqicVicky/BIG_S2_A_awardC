@@ -1,0 +1,43 @@
+{
+  "method": "MICE (IterativeImputer + BayesianRidge, sample_posterior) pooled with Rubin's rules",
+  "m": 5,
+  "estimand": "per-column mean",
+  "leakage_safe": "imputers fitted on training data only; target preserved",
+  "columns": {
+    "ed_visit_rate": {
+      "m": 5,
+      "pooled_estimate": 10.561322718768002,
+      "within_variance": 0.031942840882231135,
+      "between_variance": 0.0002382309103345662,
+      "total_variance": 0.032228717974632615,
+      "std_error": 0.17952358612347463,
+      "df": 50837.86912974228,
+      "relative_increase_variance": 0.008949645194535732,
+      "fraction_missing_information": 0.008909249007531109,
+      "ci_95": [
+        10.209456489965993,
+        10.913188947570012
+      ],
+      "missing_rate": 0.14487179487179488,
+      "naive_single_imputation_std_error": 0.17872560220133862
+    },
+    "naloxone_admin_rate": {
+      "m": 5,
+      "pooled_estimate": 23.861884094549776,
+      "within_variance": 0.20808556115271712,
+      "between_variance": 0.0030676004879264217,
+      "total_variance": 0.21176668173822882,
+      "std_error": 0.46018114013747763,
+      "df": 13237.78020429327,
+      "relative_increase_variance": 0.01769041813915227,
+      "fraction_missing_information": 0.017531330080349704,
+      "ci_95": [
+        22.95992905988032,
+        24.76383912921923
+      ],
+      "missing_rate": 0.1,
+      "naive_single_imputation_std_error": 0.4561639630140868
+    }
+  },
+  "note": "Pooled std_error reflects sampling variability AND between-imputation uncertainty from missing data. fraction_missing_information (FMI) is the share of information about the estimand lost to missingness (Rubin 1987; van Buuren FIMD Ch2)."
+}

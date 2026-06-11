@@ -20,6 +20,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src
 from missingness_auditor import MissingnessAuditor
 from missingness_auditor.visualization import MissingnessVisualizer
 from missingness_auditor.reporting import ReportWriter
+from missingness_auditor.mice import mice_pool_column_means
+from missingness_auditor.sensitivity import mnar_sensitivity, plot_tipping_point
 
 st.set_page_config(
     page_title="AI Missingness Auditor",
@@ -833,29 +835,135 @@ with tab_impute:
     else:
         st.success("Leakage check passed — safe to proceed.")
 
-    st.dataframe(
-        pd.DataFrame(
-            [
-                {
-                    "Column": col,
-                    "Strategy": entry["strategy"],
-                    "Group By": entry.get("group_col", "—"),
-                    "Add Indicator": "Yes" if entry["add_missing_indicator"] else "No",
-                    "Fit On": entry["fit_on"],
-                    "Reason": entry["reason"],
-                }
-                for col, entry in plan["columns"].items()
-            ]
-        ),
-        use_container_width=True,
-        hide_index=True,
-    )
+    # ── Decision Cards — one card per column with missing values ──────────────
+    # Each card surfaces the judgment call (mechanism + recommended strategy +
+    # why + alternatives) the way a reviewer would want to see it before approving.
+    _card_cols = [
+        (col, entry) for col, entry in plan["columns"].items()
+        if entry["strategy"] != "no_imputation_needed"
+    ]
+    if _card_cols:
+        st.subheader("🗂 Decision Cards")
+        st.caption(
+            "One card per column with missing values — the recommended call, why it "
+            "was made, and the alternatives. Statistics are fitted on training data "
+            "only; the target column is never imputed."
+        )
+        _sev_color = {"high": "🔴", "moderate": "🟠", "low": "🟡", "trace": "🔵"}
+        for _i in range(0, len(_card_cols), 2):
+            _row = _card_cols[_i:_i + 2]
+            _cols = st.columns(len(_row))
+            for _slot, (_col, _entry) in zip(_cols, _row):
+                with _slot:
+                    with st.container(border=True):
+                        _prof = profile["columns"].get(_col, {})
+                        _sev = _prof.get("severity", "—")
+                        _rate = _entry.get("missing_rate", _prof.get("missing_rate", 0))
+                        st.markdown(f"#### `{_col}`")
+                        st.markdown(
+                            f"{_sev_color.get(_sev, '⚪')} **{_rate:.1%} missing** "
+                            f"· {_sev} severity · {_prof.get('dtype_category', '—')}"
+                        )
+                        st.markdown(f"**Mechanism clue:** {_entry.get('mechanism_label', '—')}")
+                        st.markdown(f"**Recommended:** `{_entry['strategy']}`")
+                        _bits = []
+                        if _entry.get("group_col"):
+                            _bits.append(f"grouped by `{_entry['group_col']}`")
+                        if _entry.get("add_missing_indicator"):
+                            _bits.append("+ missing indicator")
+                        if _entry.get("mi_upgrade_recommended"):
+                            _bits.append("⚑ MI upgrade advised")
+                        if _bits:
+                            st.caption(" · ".join(_bits))
+                        _why = _entry.get("llm_readable_reason") or _entry.get("reason", "")
+                        if _why:
+                            st.markdown(f"*Why:* {_why}")
+                        _alts = _entry.get("llm_alternatives", [])
+                        if _alts:
+                            with st.expander("Alternatives"):
+                                for _a in _alts:
+                                    st.markdown(f"- {_a}")
+
+    with st.expander("Plan as table"):
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Column": col,
+                        "Strategy": entry["strategy"],
+                        "Group By": entry.get("group_col", "—"),
+                        "Add Indicator": "Yes" if entry["add_missing_indicator"] else "No",
+                        "Fit On": entry["fit_on"],
+                        "Reason": entry["reason"],
+                    }
+                    for col, entry in plan["columns"].items()
+                ]
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
     if sc:
         st.markdown(
             "**Strategy counts:** "
             + " · ".join(f"`{k}`: {v}" for k, v in sorted(sc.items(), key=lambda x: -x[1]))
         )
+
+    # ── Inference-grade analysis: multiple imputation + MNAR sensitivity ──────
+    with st.expander("🔬 Inference-grade analysis — multiple imputation & MNAR sensitivity"):
+        st.caption(
+            "Single imputation understates variance; MAR cannot be verified from data. "
+            "These two analyses quantify what the plan above cannot: the extra "
+            "uncertainty from missingness (Rubin's rules) and how robust a conclusion "
+            "is to MNAR departures (delta-adjustment)."
+        )
+        if st.button("Run MI + MNAR sensitivity", key="run_inference"):
+            with st.spinner("Running multiple imputation and sensitivity analysis…"):
+                try:
+                    _mice = mice_pool_column_means(df_train, target_col=target_col)
+                    if _mice.get("columns"):
+                        st.markdown("**Multiple imputation (Rubin pooling) — per-column mean**")
+                        st.dataframe(
+                            pd.DataFrame([
+                                {
+                                    "Column": c,
+                                    "Pooled mean": round(p["pooled_estimate"], 4),
+                                    "Naive SE": round(p["naive_single_imputation_std_error"], 4),
+                                    "MI SE": round(p["std_error"], 4),
+                                    "FMI": round(p["fraction_missing_information"], 3),
+                                }
+                                for c, p in _mice["columns"].items()
+                            ]),
+                            use_container_width=True, hide_index=True,
+                        )
+                        st.caption("MI SE ≥ Naive SE by construction — that gap is the "
+                                   "uncertainty single imputation hides.")
+                    _sens = mnar_sensitivity(df_train, plan, target_col=target_col)
+                    if _sens.get("columns"):
+                        st.markdown("**MNAR sensitivity — delta-adjustment tipping points**")
+                        st.dataframe(
+                            pd.DataFrame([
+                                {
+                                    "Column": c,
+                                    "Missing": f"{a['missing_rate']:.1%}",
+                                    "Tipping |δ| (SD)": (abs(a["tipping_point_delta_sd"])
+                                                          if a["tipping_point_delta_sd"] is not None
+                                                          else "robust"),
+                                    "Robustness": a["robustness"],
+                                }
+                                for c, a in _sens["columns"].items()
+                            ]),
+                            use_container_width=True, hide_index=True,
+                        )
+                        if _sens.get("fragile_columns"):
+                            st.warning("Fragile (MAR-sensitive): "
+                                       + ", ".join(_sens["fragile_columns"]))
+                        import tempfile
+                        _fig_path = os.path.join(tempfile.mkdtemp(), "tip.png")
+                        if plot_tipping_point(_sens, _fig_path):
+                            st.image(_fig_path)
+                except Exception as _exc:
+                    st.error(f"Analysis failed: {_exc}")
 
     _insight("plan", "Plan Evaluation")
 

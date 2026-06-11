@@ -1,0 +1,25 @@
+{
+  "structural_pairs": [
+    {
+      "categorical_col": "subprogram_type",
+      "numeric_col": "copresent_subrate",
+      "pattern": "numeric_near_zero_when_cat_na",
+      "evidence": "companion_numeric_zero_when_categorical_na",
+      "na_fraction_when_cat_na": 0.0,
+      "zero_fraction_when_cat_na": 1.0,
+      "zero_lift_over_baseline": 0.9981
+    }
+  ],
+  "column_flags": {
+    "subprogram_type": {
+      "is_structural": true,
+      "pattern": "structural_absence"
+    },
+    "copresent_subrate": {
+      "is_structural": true,
+      "pattern": "structural_absence"
+    }
+  },
+  "n_structural_pairs": 1,
+  "llm_summary": null
+}

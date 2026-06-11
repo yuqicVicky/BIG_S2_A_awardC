@@ -93,6 +93,30 @@ python -m missingness_auditor.cli --data data.csv --out /tmp/out --json-summary
 
 ---
 
+## Worked example — challenge data shape (state × week overdose rates)
+
+A synthetic panel dataset shaped like the STAI-X 2026 problem (suspected nonfatal
+overdose ED-visit rates, observed weekly across states) exercises every capability on
+the kind of data the challenge targets:
+
+```bash
+python examples/overdose/run_overdose_demo.py
+```
+
+| Column | Missingness it embeds | Auditor response |
+|--------|----------------------|------------------|
+| `ed_visit_rate` | a few states under-report some weeks | **groupwise per-state** median + indicator |
+| `naloxone_admin_rate` | multi-week reporting outages | **time-series ffill/bfill** + indicator |
+| `subprogram_type` | absent where no sub-program exists | **structural `NONE` token** + indicator |
+| `ed_visit_rate` | the highest-rate weeks hide themselves | flagged **fragile** by MNAR sensitivity (tips at \|δ\|=0.5 SD) |
+
+The data is **synthetic and illustrative** — generated from random numbers, containing
+no real surveillance data and **not** the official competition dataset (the challenge
+permits only official data). It exists solely to demonstrate the auditor on the
+problem's *shape*. See `examples/overdose/make_overdose_demo.py`.
+
+---
+
 ## Python API
 
 ```python
@@ -171,21 +195,22 @@ df_train_imputed = Imputer().apply(df_train, plan)
 ## Running tests
 
 ```bash
+pip install -e .
 pytest tests/ -v
 ```
 
-53 tests across 8 test files — all self-contained, no external downloads.
+30 tests across 7 test files — all self-contained, no external downloads. The suite
+targets the guarantees the skill advertises (not coverage for its own sake):
 
-| Test file | Coverage |
-|-----------|----------|
-| `test_missingness_profile.py` | Per-column rates, severity, dtype, predict rates |
-| `test_mcar_recommendation.py` | MCAR label, numeric_median strategy, no indicator |
-| `test_mar_indicator_recommendation.py` | MAR label, correlated feature found, indicator added |
-| `test_target_signal_missingness.py` | MNAR label, target_signal, indicator recommended |
-| `test_structural_missingness.py` | Structural pair detection, structural_none_or_zero |
-| `test_imputer_outputs.py` | All 8 strategies, train/predict split, indicator timing |
-| `test_cli_outputs.py` | CLI produces all 9 files, JSON summary, no-target mode |
-| `test_no_hardcoding.py` | No domain-specific column names in src/ |
+| Test file | What it proves |
+|-----------|----------------|
+| `test_hard_guards.py` | Target column is excluded from the plan and its values are never modified — including inside the MICE engine |
+| `test_leakage_safe.py` | Fill statistics come from **train only**: injecting extreme values into the predict frame does not change the fill (median and group-median paths) |
+| `test_structural.py` | Structural absence is filled with `NONE`/`0` + indicator, never the mean/mode |
+| `test_strategies_run.py` | Every strategy (incl. MICE, time-series, groupwise) applies with no error and zero residual nulls |
+| `test_mice.py` | Rubin pooling inflates variance over single imputation (`T > Ū`, `FMI ∈ (0,1)`); MICE draws differ |
+| `test_sensitivity.py` | MNAR delta-adjustment finds the tipping point for fragile columns and reports robust ones as robust |
+| `test_no_hardcoding.py` | No domain-specific column names appear in `src/` code logic (AST-checked, docstrings excluded) |
 
 ---
 
@@ -201,7 +226,7 @@ The app will use the demo CSV bundled in `examples/`. No external data is needed
 
 ---
 
-## Outputs (9 files per run)
+## Outputs per run
 
 ```
 outputs/
@@ -210,14 +235,34 @@ outputs/
 │   ├── missingness_mechanism_audit.json  MCAR/MAR-like/MNAR clue per column
 │   ├── structural_missingness_audit.json structural pair detection results
 │   ├── imputation_plan.json              per-column strategy + fit scope
-│   └── leakage_safe_imputation_check.json leakage risk findings + protocol
+│   ├── leakage_safe_imputation_check.json leakage risk findings + protocol
+│   ├── mice_pooling.json                 multiple-imputation Rubin pooling (inference)
+│   └── mnar_sensitivity.json             delta-adjustment MNAR tipping points
 ├── figures/
 │   ├── missingness_bar.png               missing rate bar chart by column
-│   ├── missingness_matrix.png            row × column presence/absence matrix
-│   └── missingness_target_signal.png     target mean: missing vs present rows
-└── reports/
-    └── missing_data_report.md            human-readable narrative summary
+│   ├── pattern_matrix.png                row × column presence/absence matrix
+│   ├── target_signal.png                 target mean: missing vs present rows
+│   ├── decision_flow.png                 CONSORT-style imputation decision flow
+│   └── mnar_tipping_point.png            delta-adjustment sensitivity trajectories
+├── reports/
+│   ├── missing_data_report.md            human-readable narrative summary
+│   └── missing_data_report.pdf           methods-appendix PDF (attach to a paper)
+├── reproduce_imputation.py               standalone, self-verifying reproduction script
+└── source_data.csv                       frozen copy of the input for reproduction
 ```
+
+### Reproducibility & inference-grade artifacts
+
+- **`reproduce_imputation.py`** is standalone (no dependency on this package): it
+  embeds the plan, re-applies it with train-only statistics, and **verifies its own
+  output** (no residual nulls, target untouched, indicators binary). Run it months
+  later to reproduce the cleaned dataset, or attach it to a methods appendix.
+- **`mice_pooling.json`** reports the pooled mean, the naive single-imputation SE,
+  the multiple-imputation SE, and the **fraction of missing information** per column —
+  the variance single imputation hides (Rubin 1987; van Buuren FIMD Ch2).
+- **`mnar_sensitivity.json`** + `mnar_tipping_point.png` report the **tipping point**:
+  how large an MNAR departure (in SD units) would overturn a conclusion drawn under
+  MAR. Small tipping point ⇒ the result hinges on an untestable assumption (FIMD Ch9).
 
 ---
 
@@ -231,8 +276,13 @@ outputs/
 | `categorical_missing_token` | Categorical, <10% missing |
 | `categorical_mode_plus_indicator` | Categorical, ≥10% missing |
 | `structural_none_or_zero` | Structural absence pattern detected |
+| `time_series_ffill_bfill_plus_indicator` | Temporally-ordered measurement (forward/backward fill) |
 | `drop_column` | >80% missing |
-| `model_based_imputation_optional` | Complex MAR, moderate missingness |
+| `model_based_imputation_optional` / `mice_multiple_imputation` | Complex MAR — leakage-safe `IterativeImputer` (the MICE engine), not a median fallback |
+
+For **statistical inference** (not just ML features), the auditor additionally runs
+full Multiple Imputation by Chained Equations and pools the results with **Rubin's
+rules**, and runs an **MNAR delta-adjustment sensitivity analysis** — see below.
 
 ---
 

@@ -106,19 +106,67 @@ class MissingnessAuditor:
         return result
 
     def save_outputs(self, results: dict, output_dir: str) -> None:
-        """Write all JSON logs, figures, and markdown report to disk."""
-        os.makedirs(os.path.join(output_dir, "logs"), exist_ok=True)
-        os.makedirs(os.path.join(output_dir, "figures"), exist_ok=True)
+        """Write all JSON logs, figures, reports, and reproducibility artifacts.
+
+        Beyond the core audit, this also writes:
+          - logs/mice_pooling.json        Multiple-imputation Rubin pooling (inference)
+          - logs/mnar_sensitivity.json    Delta-adjustment MNAR sensitivity
+          - figures/mnar_tipping_point.png + figures/decision_flow.png
+          - reports/missing_data_report.pdf  Methods-appendix PDF
+          - reproduce_imputation.py + source_data.csv  Self-verifying reproduction
+        """
+        logs_dir = os.path.join(output_dir, "logs")
+        figures_dir = os.path.join(output_dir, "figures")
+        os.makedirs(logs_dir, exist_ok=True)
+        os.makedirs(figures_dir, exist_ok=True)
         os.makedirs(os.path.join(output_dir, "reports"), exist_ok=True)
+
+        plan = results["imputation_plan"]
+
+        # Inference-grade artifacts: multiple imputation + MNAR sensitivity.
+        # Both are best-effort — a failure here must not block the core report.
+        mice_pooling = None
+        mnar_sens = None
+        try:
+            from .mice import mice_pool_column_means
+            mice_pooling = mice_pool_column_means(self.df, target_col=self.target_col)
+        except Exception as exc:  # pragma: no cover - optional artifact
+            print(f"[auditor] MICE pooling skipped: {exc}")
+        try:
+            from .sensitivity import mnar_sensitivity, plot_tipping_point
+            mnar_sens = mnar_sensitivity(self.df, plan, target_col=self.target_col)
+            plot_tipping_point(
+                mnar_sens, os.path.join(figures_dir, "mnar_tipping_point.png")
+            )
+        except Exception as exc:  # pragma: no cover - optional artifact
+            print(f"[auditor] MNAR sensitivity skipped: {exc}")
 
         ReportWriter(output_dir, llm_client=self.llm_client).write_all(
             profile=results["missingness_profile"],
             mechanism_audit=results["mechanism_audit"],
             structural_audit=results["structural_missingness"],
-            imputation_plan=results["imputation_plan"],
+            imputation_plan=plan,
             leakage_check=results["leakage_safe_check"],
+            mice_pooling=mice_pooling,
+            mnar_sensitivity=mnar_sens,
         )
 
-        MissingnessVisualizer(self.df, target_col=self.target_col).generate_all(
-            figures_dir=os.path.join(output_dir, "figures")
-        )
+        viz = MissingnessVisualizer(self.df, target_col=self.target_col)
+        viz.generate_all(figures_dir=figures_dir)
+        try:
+            viz.decision_flow(plan, os.path.join(figures_dir, "decision_flow.png"))
+        except Exception as exc:  # pragma: no cover - optional artifact
+            print(f"[auditor] decision-flow figure skipped: {exc}")
+
+        # Self-verifying reproduction script + a frozen copy of the source data,
+        # so the artifact runs standalone months later.
+        try:
+            from .codegen import emit_reproduction_script
+            data_copy = os.path.join(output_dir, "source_data.csv")
+            self.df.to_csv(data_copy, index=False)
+            emit_reproduction_script(
+                plan, data_copy, target_col=self.target_col,
+                out_path=os.path.join(output_dir, "reproduce_imputation.py"),
+            )
+        except Exception as exc:  # pragma: no cover - optional artifact
+            print(f"[auditor] reproduction script skipped: {exc}")

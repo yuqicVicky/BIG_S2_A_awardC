@@ -252,12 +252,27 @@ Trigger this recommendation when:
 | `outputs/logs/structural_missingness_audit.json` | Structural absence pairs and column flags |
 | `outputs/logs/imputation_plan.json` | Per-column strategy, indicator flag, fit scope (schema: `references/imputation_plan_schema.md`) |
 | `outputs/logs/leakage_safe_imputation_check.json` | Leakage risk per column + global protocol |
+| `outputs/logs/mice_pooling.json` | Multiple-imputation Rubin pooling: pooled mean, naive vs MI standard error, FMI per column (inference) |
+| `outputs/logs/mnar_sensitivity.json` | MNAR delta-adjustment tipping points + fragile-column list |
 | `outputs/reports/missing_data_report.md` | Human-readable narrative summary |
+| `outputs/reports/missing_data_report.pdf` | Methods-appendix PDF (attach to a paper) |
 | `outputs/figures/missingness_bar.png` | Bar chart of missing rates by column |
-| `outputs/figures/missingness_matrix.png` | Missingness pattern matrix |
-| `outputs/figures/missingness_target_signal.png` | Target mean for missing vs present rows |
+| `outputs/figures/pattern_matrix.png` | Missingness pattern matrix |
+| `outputs/figures/target_signal.png` | Target mean for missing vs present rows |
+| `outputs/figures/decision_flow.png` | CONSORT-style imputation decision flow diagram |
+| `outputs/figures/mnar_tipping_point.png` | Delta-adjustment sensitivity trajectories |
+| `outputs/reproduce_imputation.py` | Standalone, self-verifying reproduction script |
+| `outputs/source_data.csv` | Frozen copy of the input, for the reproduction script |
 | `outputs/train_imputed.csv` | Imputed training data |
 | `outputs/predict_imputed.csv` | Imputed predict/test data (if `df_predict` was provided) |
+
+**Inference-grade analysis (automatic in `save_outputs`).** Single imputation is fine
+for ML feature engineering but understates variance for inference. The auditor therefore
+also runs full **MICE** (`IterativeImputer` + `BayesianRidge`, `sample_posterior`) and
+pools per-column estimates with **Rubin's rules** (`mice_pooling.json`), and runs an
+**MNAR delta-adjustment sensitivity analysis** (`mnar_sensitivity.json`) reporting the
+*tipping point* — how large an MNAR departure would overturn a MAR-based conclusion.
+Both are leakage-safe (fit on train only) and best-effort (never block the core report).
 
 ## Key questions answered
 

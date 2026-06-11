@@ -1,0 +1,107 @@
+{
+  "method": "delta-adjustment (pattern-mixture) MNAR sensitivity analysis",
+  "estimand": "column mean",
+  "deltas_sd": [
+    -2.0,
+    -1.5,
+    -1.0,
+    -0.75,
+    -0.5,
+    -0.25,
+    0.0,
+    0.25,
+    0.5,
+    0.75,
+    1.0,
+    1.5,
+    2.0
+  ],
+  "tipping_point_rule": "smallest |delta| (in observed-SD units) at which the full-sample mean leaves the complete-case 95% CI",
+  "columns": {
+    "ed_visit_rate": {
+      "n_observed": 667,
+      "n_missing": 113,
+      "missing_rate": 0.14487179487179488,
+      "observed_sd": 4.809784142153242,
+      "complete_case_mean": 10.346356821589206,
+      "complete_case_ci_95": [
+        9.981335073546461,
+        10.71137856963195
+      ],
+      "tipping_point_delta_sd": -0.5,
+      "robustness": "fragile",
+      "interpretation": "The conclusion tips at only |delta|=0.5 SD: a modest MNAR departure would move the mean outside its complete-case CI. Treat any MAR-based estimate with caution and collect domain evidence on why values are missing.",
+      "trajectory": [
+        {
+          "delta_sd": -2.0,
+          "mean": 8.84897279983765,
+          "outside_complete_case_ci": true
+        },
+        {
+          "delta_sd": -1.5,
+          "mean": 9.19737383064747,
+          "outside_complete_case_ci": true
+        },
+        {
+          "delta_sd": -1.0,
+          "mean": 9.545774861457287,
+          "outside_complete_case_ci": true
+        },
+        {
+          "delta_sd": -0.75,
+          "mean": 9.719975376862196,
+          "outside_complete_case_ci": true
+        },
+        {
+          "delta_sd": -0.5,
+          "mean": 9.894175892267105,
+          "outside_complete_case_ci": true
+        },
+        {
+          "delta_sd": -0.25,
+          "mean": 10.068376407672014,
+          "outside_complete_case_ci": false
+        },
+        {
+          "delta_sd": 0.0,
+          "mean": 10.242576923076923,
+          "outside_complete_case_ci": false
+        },
+        {
+          "delta_sd": 0.25,
+          "mean": 10.416777438481834,
+          "outside_complete_case_ci": false
+        },
+        {
+          "delta_sd": 0.5,
+          "mean": 10.590977953886744,
+          "outside_complete_case_ci": false
+        },
+        {
+          "delta_sd": 0.75,
+          "mean": 10.76517846929165,
+          "outside_complete_case_ci": true
+        },
+        {
+          "delta_sd": 1.0,
+          "mean": 10.939378984696559,
+          "outside_complete_case_ci": true
+        },
+        {
+          "delta_sd": 1.5,
+          "mean": 11.287780015506378,
+          "outside_complete_case_ci": true
+        },
+        {
+          "delta_sd": 2.0,
+          "mean": 11.636181046316196,
+          "outside_complete_case_ci": true
+        }
+      ]
+    }
+  },
+  "fragile_columns": [
+    "ed_visit_rate"
+  ],
+  "note": "MAR cannot be verified from observed data. A small tipping point means a conclusion hinges on the untestable MAR assumption; a large one means it is robust to plausible MNAR departures (van Buuren FIMD Ch9)."
+}

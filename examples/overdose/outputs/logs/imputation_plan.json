@@ -1,0 +1,188 @@
+{
+  "columns": {
+    "state": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "object",
+      "cardinality": 15,
+      "mechanism_label": "MCAR-compatible",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    },
+    "week": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "int64",
+      "cardinality": 52,
+      "mechanism_label": "MCAR-compatible",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    },
+    "population_100k": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "float64",
+      "cardinality": 451,
+      "mechanism_label": "MCAR-compatible",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    },
+    "ed_visit_rate": {
+      "strategy": "groupwise_numeric_median_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "group_dependent_missingness_by_feature='state'",
+      "fit_on": "train_only",
+      "missing_rate": 0.1449,
+      "dtype": "float64",
+      "cardinality": 539,
+      "mechanism_label": "group-dependent missingness",
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": null
+      },
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": {
+        "detected": true,
+        "top_categorical_feature": "state",
+        "max_missingness_spread": 0.4615,
+        "high_missing_groups": {}
+      },
+      "structural_evidence": null,
+      "safety_warning": null,
+      "mi_upgrade_recommended": true,
+      "group_col": "state"
+    },
+    "naloxone_admin_rate": {
+      "strategy": "time_series_ffill_bfill_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "domain='time_series_metric'_temporal_measurement_ffill_preferred_over_median",
+      "fit_on": "train_only",
+      "missing_rate": 0.1,
+      "dtype": "float64",
+      "cardinality": 647,
+      "mechanism_label": "MCAR-compatible",
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": null
+      },
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": {
+        "detected": false
+      },
+      "structural_evidence": null,
+      "safety_warning": "sort_by_time_column_before_applying_ffill_bfill",
+      "mi_upgrade_recommended": false
+    },
+    "subprogram_type": {
+      "strategy": "structural_none_token_plus_indicator",
+      "add_missing_indicator": true,
+      "reason": "structural_absence_categorical_na_encodes_absence",
+      "fit_on": "train_only",
+      "missing_rate": 0.3333,
+      "dtype": "object",
+      "cardinality": 3,
+      "mechanism_label": "structural absence concern",
+      "target_association_evidence": {
+        "detected": false,
+        "correlation": null
+      },
+      "covariate_association_evidence": [
+        {
+          "feature": "copresent_subrate",
+          "correlation": 0.7262
+        },
+        {
+          "feature": "naloxone_admin_rate",
+          "correlation": 0.1948
+        },
+        {
+          "feature": "population_100k",
+          "correlation": 0.1683
+        }
+      ],
+      "group_dependency_evidence": {
+        "detected": true,
+        "top_categorical_feature": "state",
+        "max_missingness_spread": 1.0,
+        "high_missing_groups": {
+          "AL": 1.0,
+          "CA": 1.0,
+          "MI": 1.0,
+          "NC": 1.0,
+          "OH": 1.0
+        }
+      },
+      "structural_evidence": {
+        "detected": true,
+        "pattern": "structural_absence",
+        "companion_columns": [
+          "copresent_subrate"
+        ]
+      },
+      "safety_warning": null,
+      "mi_upgrade_recommended": true
+    },
+    "copresent_subrate": {
+      "strategy": "no_imputation_needed",
+      "add_missing_indicator": false,
+      "reason": "no_missing_values",
+      "fit_on": "N/A",
+      "missing_rate": 0.0,
+      "dtype": "float64",
+      "cardinality": 380,
+      "mechanism_label": "structural absence concern",
+      "target_association_evidence": null,
+      "covariate_association_evidence": [],
+      "group_dependency_evidence": null,
+      "structural_evidence": {
+        "detected": true,
+        "pattern": "structural_absence",
+        "companion_columns": [
+          "subprogram_type"
+        ]
+      },
+      "safety_warning": null,
+      "mi_upgrade_recommended": false
+    }
+  },
+  "summary": {
+    "strategy_counts": {
+      "no_imputation_needed": 4,
+      "groupwise_numeric_median_plus_indicator": 1,
+      "time_series_ffill_bfill_plus_indicator": 1,
+      "structural_none_token_plus_indicator": 1
+    },
+    "columns_needing_missing_indicator": [
+      "ed_visit_rate",
+      "naloxone_admin_rate",
+      "subprogram_type"
+    ],
+    "n_columns_to_impute": 3,
+    "columns_where_full_mi_recommended": [
+      "ed_visit_rate",
+      "subprogram_type"
+    ]
+  },
+  "leakage_protocol": "All imputation statistics (median, mode, group medians, model parameters) must be fitted on training data only and applied to prediction data."
+}

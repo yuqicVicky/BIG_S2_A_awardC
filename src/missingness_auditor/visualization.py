@@ -326,6 +326,99 @@ class MissingnessVisualizer:
         self._add_caption(fig, caption)
         return fig
 
+    def decision_flow(self, imputation_plan: dict, out_path: str) -> str:
+        """Render a CONSORT-style flow diagram of the imputation decision pipeline.
+
+        Reads the imputation plan and draws the funnel: dataset → columns with
+        missing values → mechanism breakdown → strategy assignment → leakage-safe
+        imputation, with side boxes for the columns excluded at each stage (fully
+        observed, dropped). Saves a PNG and returns its path.
+        """
+        from collections import Counter
+
+        cols = imputation_plan.get("columns", {})
+        total_cols = len(cols)
+        n_rows = len(self.df)
+        missing_cols = {c: e for c, e in cols.items()
+                        if e.get("strategy") not in ("no_imputation_needed", None)}
+        n_missing = len(missing_cols)
+        n_observed = total_cols - n_missing
+
+        mech_counts = Counter(e.get("mechanism_label", "—") for e in missing_cols.values())
+        strat_counts = Counter(e.get("strategy", "—") for e in missing_cols.values())
+        dropped = [c for c, e in missing_cols.items() if e.get("strategy") == "drop_column"]
+        n_imputed = n_missing - len(dropped)
+        n_indicator = sum(1 for e in missing_cols.values() if e.get("add_missing_indicator"))
+
+        def _fmt_counts(counter, limit=6):
+            items = counter.most_common(limit)
+            lines = [f"{k}: {v}" for k, v in items]
+            extra = len(counter) - len(items)
+            if extra > 0:
+                lines.append(f"+{extra} more")
+            return "\n".join(lines) if lines else "(none)"
+
+        fig, ax = plt.subplots(figsize=(9, 11))
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 13)
+        ax.axis("off")
+
+        def box(x, y, w, h, text, fc="#eaf2fb", ec="#1f77b4"):
+            from matplotlib.patches import FancyBboxPatch
+            patch = FancyBboxPatch(
+                (x - w / 2, y - h / 2), w, h,
+                boxstyle="round,pad=0.1,rounding_size=0.12",
+                facecolor=fc, edgecolor=ec, linewidth=1.4,
+            )
+            ax.add_patch(patch)
+            ax.text(x, y, text, ha="center", va="center", fontsize=9, wrap=True)
+
+        def arrow(x0, y0, x1, y1):
+            ax.annotate("", xy=(x1, y1), xytext=(x0, y0),
+                        arrowprops=dict(arrowstyle="-|>", color="#444", lw=1.6))
+
+        main_x = 3.6
+        # Tier 0 — dataset
+        box(main_x, 12.0, 5.0, 1.1,
+            f"Dataset\n{n_rows} rows × {total_cols} columns")
+        arrow(main_x, 11.45, main_x, 10.85)
+        # Tier 1 — columns with missing values (+ exclusion: fully observed)
+        box(main_x, 10.2, 5.0, 1.2,
+            f"{n_missing} of {total_cols} columns\nhave missing values")
+        box(8.3, 10.2, 3.0, 1.1,
+            f"Excluded:\n{n_observed} fully observed\n(no action)",
+            fc="#f2f2f2", ec="#999999")
+        arrow(5.85, 10.2, 6.8, 10.2)
+        arrow(main_x, 9.6, main_x, 9.0)
+        # Tier 2 — mechanism breakdown
+        box(main_x, 8.0, 5.0, 1.9,
+            "Mechanism clue per column\n" + _fmt_counts(mech_counts),
+            fc="#fff3e6", ec="#ff7f0e")
+        arrow(main_x, 7.05, main_x, 6.45)
+        # Tier 3 — strategy assignment (+ exclusion: dropped)
+        box(main_x, 5.3, 5.0, 2.0,
+            "Leakage-safe strategy assigned\n" + _fmt_counts(strat_counts),
+            fc="#eef7ee", ec="#2ca02c")
+        if dropped:
+            box(8.3, 5.3, 3.0, 1.3,
+                f"Excluded:\n{len(dropped)} dropped\n(>80% missing)",
+                fc="#fdecec", ec="#d62728")
+            arrow(5.85, 5.3, 6.8, 5.3)
+        arrow(main_x, 4.3, main_x, 3.7)
+        # Tier 4 — terminal
+        box(main_x, 2.8, 5.4, 1.9,
+            f"Imputed (fit on train only)\n{n_imputed} columns imputed\n"
+            f"{n_indicator} missing-indicator columns added",
+            fc="#eaf2fb", ec="#1f77b4")
+
+        ax.set_title("Imputation decision flow (CONSORT-style)", fontsize=13, pad=12)
+        fig.text(0.5, 0.02,
+                 "Statistics fitted on training data only · target column never imputed",
+                 ha="center", fontsize=8, style="italic", color="#555555")
+        fig.savefig(out_path, dpi=110, bbox_inches="tight")
+        plt.close(fig)
+        return out_path
+
     @staticmethod
     def _add_caption(fig: plt.Figure, text: str) -> None:
         """Render a data-driven interpretation below the figure axes."""

@@ -39,12 +39,17 @@ class Imputer:
     structural_none_token_plus_indicator     : fill categorical with "NONE" + indicator
     structural_zero_plus_indicator           : fill numeric with 0 + indicator
     structural_none_or_zero                  : legacy alias (auto-dispatches by dtype)
-    model_based_imputation_optional          : falls back to median
+    model_based_imputation_optional          : leakage-safe IterativeImputer (MICE engine)
+    mice_multiple_imputation                 : alias for model_based_imputation_optional
     """
 
     def __init__(self, llm_client=None):
         self.llm_client = llm_client
         self.llm_distribution_summary: str | None = None
+        # Lazily-fitted IterativeImputer shared across all model-based columns.
+        # Fitted on df_train only (leakage-safe); cached so we fit at most once.
+        self._mice_model = None
+        self._mice_numeric_cols: list[str] = []
 
     def apply(
         self,
@@ -148,12 +153,15 @@ class Imputer:
                 if df_predict is not None and col in df_predict.columns:
                     df_predict[col] = df_predict[col].fillna(fill)
 
-            elif strategy == "model_based_imputation_optional":
-                # Falls back to median; MICE via IterativeImputer is out of scope
-                fill = df_train[col].median()              # fit on train
-                df_train[col] = df_train[col].fillna(fill)
-                if df_predict is not None and col in df_predict.columns:
-                    df_predict[col] = df_predict[col].fillna(fill)
+            elif strategy in ("model_based_imputation_optional", "mice_multiple_imputation"):
+                # Leakage-safe model-based single imputation: one IterativeImputer
+                # (the MICE engine) fitted on df_train's numeric columns predicts the
+                # missing cells from the other features. Far better than median when
+                # the column is MAR-correlated with observed covariates. Falls back to
+                # median if the column is non-numeric or the model cannot be fitted.
+                df_train, df_predict = self._model_based_fill(
+                    col, df_train, df_predict
+                )
 
         if drop_cols:
             df_train = df_train.drop(columns=drop_cols, errors="ignore")
@@ -166,6 +174,67 @@ class Imputer:
         if df_predict is not None:
             return df_train, df_predict
         return df_train
+
+    def _model_based_fill(
+        self,
+        col: str,
+        df_train: pd.DataFrame,
+        df_predict: pd.DataFrame | None,
+    ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+        """Fill a single numeric column with a leakage-safe IterativeImputer.
+
+        The imputer is fitted once on df_train's numeric columns and cached, then
+        reused for every model-based column. Only ``col`` is written back from the
+        model output, so other columns keep their plan-specific strategies. Falls
+        back to the training-set median when the column is non-numeric or there are
+        too few predictor columns to fit a model.
+        """
+        if not pd.api.types.is_numeric_dtype(df_train[col]):
+            fill = df_train[col].median()
+            df_train[col] = df_train[col].fillna(fill)
+            if df_predict is not None and col in df_predict.columns:
+                df_predict[col] = df_predict[col].fillna(fill)
+            return df_train, df_predict
+
+        if self._mice_model is None:
+            numeric_cols = [
+                c for c in df_train.columns
+                if pd.api.types.is_numeric_dtype(df_train[c])
+                and df_train[c].notna().any()
+            ]
+            # Need at least one predictor besides the target column to model from.
+            if len(numeric_cols) < 2:
+                fill = df_train[col].median()
+                df_train[col] = df_train[col].fillna(fill)
+                if df_predict is not None and col in df_predict.columns:
+                    df_predict[col] = df_predict[col].fillna(fill)
+                return df_train, df_predict
+            from sklearn.experimental import enable_iterative_imputer  # noqa: F401
+            from sklearn.impute import IterativeImputer
+
+            model = IterativeImputer(max_iter=10, random_state=0)
+            model.fit(df_train[numeric_cols].to_numpy(dtype=float))  # train only
+            self._mice_model = model
+            self._mice_numeric_cols = numeric_cols
+
+        cols = self._mice_numeric_cols
+        if col not in cols:
+            fill = df_train[col].median()
+            df_train[col] = df_train[col].fillna(fill)
+            if df_predict is not None and col in df_predict.columns:
+                df_predict[col] = df_predict[col].fillna(fill)
+            return df_train, df_predict
+
+        ci = cols.index(col)
+        filled_train = self._mice_model.transform(df_train[cols].to_numpy(dtype=float))
+        df_train[col] = filled_train[:, ci]
+        if df_predict is not None and all(c in df_predict.columns for c in cols):
+            filled_pred = self._mice_model.transform(df_predict[cols].to_numpy(dtype=float))
+            df_predict[col] = filled_pred[:, ci]
+        elif df_predict is not None and col in df_predict.columns:
+            # Predict frame lacks some predictor columns — safe median fallback.
+            df_predict[col] = df_predict[col].fillna(df_train[col].median())
+        return df_train, df_predict
 
     def _generate_distribution_summary(
         self,

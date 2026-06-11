@@ -20,6 +20,8 @@ class ReportWriter:
         structural_audit: dict,
         imputation_plan: dict,
         leakage_check: dict,
+        mice_pooling: dict | None = None,
+        mnar_sensitivity: dict | None = None,
     ) -> None:
         os.makedirs(self.logs_dir, exist_ok=True)
         os.makedirs(self.reports_dir, exist_ok=True)
@@ -29,12 +31,24 @@ class ReportWriter:
         self._json("structural_missingness_audit.json", structural_audit)
         self._json("imputation_plan.json", imputation_plan)
         self._json("leakage_safe_imputation_check.json", leakage_check)
+        if mice_pooling is not None:
+            self._json("mice_pooling.json", mice_pooling)
+        if mnar_sensitivity is not None:
+            self._json("mnar_sensitivity.json", mnar_sensitivity)
 
         md = self.generate_report_md(
-            profile, mechanism_audit, structural_audit, imputation_plan, leakage_check
+            profile, mechanism_audit, structural_audit, imputation_plan, leakage_check,
+            mice_pooling=mice_pooling, mnar_sensitivity=mnar_sensitivity,
         )
         with open(os.path.join(self.reports_dir, "missing_data_report.md"), "w") as f:
             f.write(md)
+        # Best-effort PDF methods appendix; never let it break the core outputs.
+        try:
+            self.generate_report_pdf(
+                md, os.path.join(self.reports_dir, "missing_data_report.pdf")
+            )
+        except Exception as exc:  # pragma: no cover - optional artifact
+            print(f"[reporting] PDF generation skipped: {exc}")
 
     def generate_report_md(
         self,
@@ -43,6 +57,8 @@ class ReportWriter:
         structural_audit: dict,
         imputation_plan: dict,
         leakage_check: dict,
+        mice_pooling: dict | None = None,
+        mnar_sensitivity: dict | None = None,
     ) -> str:
         """Generate a markdown report. Includes LLM narratives when present in results."""
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -403,6 +419,81 @@ class ReportWriter:
             "",
         ]
 
+        # ── Multiple Imputation (Rubin pooling) results
+        if mice_pooling and mice_pooling.get("columns"):
+            lines += [
+                "---",
+                "",
+                "## Multiple Imputation Results (Rubin's Rules)",
+                "",
+                f"*Method: {mice_pooling.get('method', 'MICE')}; m = {mice_pooling.get('m')} imputations; "
+                f"estimand = {mice_pooling.get('estimand', 'per-column mean')}.*",
+                "",
+                "Single imputation treats filled values as certain and understates variance. "
+                "The pooled standard error below propagates the extra uncertainty from "
+                "missingness via Rubin's rules. **FMI** is the fraction of information about "
+                "the estimand lost to missing data.",
+                "",
+                "| Column | Missing | Pooled mean | Naive SE (single) | Pooled SE (MI) | 95% CI | FMI |",
+                "|--------|---------|------------|-------------------|----------------|--------|-----|",
+            ]
+            for col, p in mice_pooling["columns"].items():
+                ci = p.get("ci_95", [None, None])
+                ci_str = (f"[{ci[0]:.3g}, {ci[1]:.3g}]"
+                          if ci and ci[0] is not None else "—")
+                lines.append(
+                    f"| `{col}` | {p.get('missing_rate', 0):.1%} "
+                    f"| {p.get('pooled_estimate', float('nan')):.4g} "
+                    f"| {p.get('naive_single_imputation_std_error', float('nan')):.4g} "
+                    f"| {p.get('std_error', float('nan')):.4g} "
+                    f"| {ci_str} | {p.get('fraction_missing_information', 0):.2f} |"
+                )
+            lines += [
+                "",
+                "> The pooled (MI) standard error is ≥ the naive single-imputation SE by "
+                "construction — that gap is exactly the uncertainty single imputation hides "
+                "(Rubin 1987; van Buuren FIMD Ch2).",
+                "",
+            ]
+
+        # ── MNAR sensitivity analysis
+        if mnar_sensitivity and mnar_sensitivity.get("columns"):
+            fragile = mnar_sensitivity.get("fragile_columns", [])
+            lines += [
+                "---",
+                "",
+                "## MNAR Sensitivity Analysis (Delta-Adjustment)",
+                "",
+                f"*{mnar_sensitivity.get('method', 'delta-adjustment')}; "
+                f"tipping-point rule: {mnar_sensitivity.get('tipping_point_rule', '')}.*",
+                "",
+                "Imputation assumes MAR, which cannot be verified from observed data. Each "
+                "column's imputed values are shifted by `delta` standard deviations; the "
+                "**tipping point** is the smallest |delta| at which the mean leaves the "
+                "complete-case 95% CI. A small tipping point ⇒ the conclusion hinges on the "
+                "untestable MAR assumption.",
+                "",
+                "| Column | Missing | Tipping point (|δ| SD) | Robustness |",
+                "|--------|---------|------------------------|------------|",
+            ]
+            for col, a in mnar_sensitivity["columns"].items():
+                tp = a.get("tipping_point_delta_sd")
+                tp_str = f"{abs(tp)}" if tp is not None else "none (robust)"
+                lines.append(
+                    f"| `{col}` | {a.get('missing_rate', 0):.1%} | {tp_str} "
+                    f"| {a.get('robustness', '—')} |"
+                )
+            if fragile:
+                lines += [
+                    "",
+                    f"> ⚠️ **Fragile columns** (tip at |δ| ≤ 0.5 SD): "
+                    + ", ".join(f"`{c}`" for c in fragile)
+                    + ". MAR-based estimates for these are sensitive to plausible MNAR "
+                    "departures — gather domain evidence on why values are missing "
+                    "(van Buuren FIMD Ch9).",
+                ]
+            lines.append("")
+
         # ── Limitations
         lines += [
             "---",
@@ -433,6 +524,116 @@ class ReportWriter:
         ]
 
         return "\n".join(lines)
+
+    def generate_report_pdf(self, md_text: str, out_path: str) -> str:
+        """Render the markdown report to a PDF "methods appendix" via reportlab.
+
+        This is a pragmatic markdown renderer: headings, bullet lists, blockquotes,
+        and pipe-tables are styled; everything else flows as body text. The goal is a
+        shareable, attach-to-a-paper artifact, not a pixel-perfect typesetter.
+        """
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Preformatted,
+        )
+
+        styles = getSampleStyleSheet()
+        body = styles["BodyText"]
+        h1 = ParagraphStyle("h1", parent=styles["Heading1"], fontSize=16, spaceAfter=8)
+        h2 = ParagraphStyle("h2", parent=styles["Heading2"], fontSize=13, spaceAfter=6)
+        h3 = ParagraphStyle("h3", parent=styles["Heading3"], fontSize=11, spaceAfter=4)
+        quote = ParagraphStyle(
+            "quote", parent=body, leftIndent=14, textColor=colors.HexColor("#555555"),
+            fontName="Helvetica-Oblique",
+        )
+
+        def esc(s: str) -> str:
+            return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    .replace("`", ""))
+
+        def inline(s: str) -> str:
+            # markdown bold **x** → <b>x</b>; strip backticks for code spans.
+            import re
+            s = esc(s)
+            s = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", s)
+            return s
+
+        flow = []
+        lines = md_text.split("\n")
+        i = 0
+        table_buf: list[str] = []
+
+        def flush_table():
+            nonlocal table_buf
+            if not table_buf:
+                return
+            rows = []
+            for r in table_buf:
+                cells = [c.strip() for c in r.strip().strip("|").split("|")]
+                rows.append(cells)
+            # Drop the markdown separator row (---|---).
+            rows = [r for r in rows if not all(set(c) <= set("-: ") for c in r)]
+            if rows:
+                data = [[Paragraph(inline(c), body) for c in r] for r in rows]
+                tbl = Table(data, repeatRows=1, hAlign="LEFT")
+                tbl.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf2fb")),
+                    ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#bbbbbb")),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ]))
+                flow.append(tbl)
+                flow.append(Spacer(1, 8))
+            table_buf = []
+
+        while i < len(lines):
+            line = lines[i]
+            stripped = line.strip()
+            if stripped.startswith("|") and stripped.endswith("|"):
+                table_buf.append(stripped)
+                i += 1
+                continue
+            else:
+                flush_table()
+
+            if not stripped or stripped == "---":
+                flow.append(Spacer(1, 6))
+            elif stripped.startswith("### "):
+                flow.append(Paragraph(inline(stripped[4:]), h3))
+            elif stripped.startswith("## "):
+                flow.append(Paragraph(inline(stripped[3:]), h2))
+            elif stripped.startswith("# "):
+                flow.append(Paragraph(inline(stripped[2:]), h1))
+            elif stripped.startswith(">"):
+                flow.append(Paragraph(inline(stripped.lstrip("> ").strip()), quote))
+            elif stripped.startswith("```"):
+                # consume a fenced code block
+                i += 1
+                code = []
+                while i < len(lines) and not lines[i].strip().startswith("```"):
+                    code.append(lines[i])
+                    i += 1
+                flow.append(Preformatted("\n".join(code), styles["Code"]))
+            elif stripped.startswith("- ") or stripped.startswith("* "):
+                flow.append(Paragraph("• " + inline(stripped[2:]), body))
+            else:
+                flow.append(Paragraph(inline(stripped), body))
+            i += 1
+        flush_table()
+
+        doc = SimpleDocTemplate(
+            out_path, pagesize=letter,
+            leftMargin=0.8 * inch, rightMargin=0.8 * inch,
+            topMargin=0.8 * inch, bottomMargin=0.8 * inch,
+            title="Missing Data Report — Methods Appendix",
+        )
+        doc.build(flow)
+        return out_path
 
     def _generate_executive_narrative(
         self,
