@@ -25,7 +25,6 @@ from missingness_auditor.sensitivity import mnar_sensitivity, plot_tipping_point
 
 st.set_page_config(
     page_title="AI Missingness Auditor",
-    page_icon="🤖",
     layout="wide",
 )
 
@@ -149,8 +148,7 @@ def _render_insight(data: dict | None, label: str = "Claude's Analysis") -> None
     bullets = data.get("bullets", [])
     rec = data.get("recommendation", "")
 
-    icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(severity, "🔵")
-    st.markdown(f"**{icon} {label}**")
+    st.markdown(f"**{label}**")
     if headline:
         st.markdown(f"> _{headline}_")
     if bullets:
@@ -364,7 +362,7 @@ def _render_numeric_comparison(before: pd.Series, after: pd.Series, col: str) ->
         alerts.append(f"KS test: distributions differ significantly (p={ks_p:.3f}, stat={ks_stat:.3f}).")
     if alerts:
         for a in alerts:
-            st.warning(f"⚠️ {a}")
+            st.warning(a)
     else:
         st.success("Distribution stable — no significant drift detected.")
 
@@ -407,7 +405,7 @@ def _render_categorical_comparison(before: pd.Series, after: pd.Series, col: str
 
     if missing_token_pct > 0.30:
         st.warning(
-            f"⚠️ MISSING token is {missing_token_pct:.1%} of all values "
+            f"MISSING token is {missing_token_pct:.1%} of all values "
             "— check that your model handles this category meaningfully."
         )
 
@@ -418,7 +416,7 @@ def _render_categorical_comparison(before: pd.Series, after: pd.Series, col: str
         pct_a = (after == mode_val).mean()
         if pct_a > 2 * pct_b and pct_a > 0.30:
             st.warning(
-                f"⚠️ Mode fill caused `{mode_val}` to inflate from {pct_b:.1%} → {pct_a:.1%} "
+                f"Mode fill caused `{mode_val}` to inflate from {pct_b:.1%} → {pct_a:.1%} "
                 "— risk of class-imbalance bias in downstream model."
             )
 
@@ -448,7 +446,7 @@ def _render_before_after_section(
     df_after: pd.DataFrame,
     profile: dict,
     target_col: str | None,
-    label: str = "📊 Before vs After Simulation",
+    label: str = "Before vs After Simulation",
 ) -> None:
     st.subheader(label)
 
@@ -482,7 +480,7 @@ def _render_before_after_section(
 
 # ──────────────────────────────────────────────── sidebar ────────────────────
 with st.sidebar:
-    st.title("🤖 AI Missingness Auditor")
+    st.title("AI Missingness Auditor")
     st.caption("Claude narrates every step of your missing-data analysis.")
 
     st.divider()
@@ -493,9 +491,9 @@ with st.sidebar:
         help="Required for AI-guided analysis.",
     )
     if api_key_input:
-        st.success("API key ready ✓", icon="🔑")
+        st.success("API key ready")
     else:
-        st.info("Add an API key for AI analysis.", icon="🔑")
+        st.info("Add an API key for AI analysis.")
 
     st.divider()
     source = st.radio("Data source", ["Upload CSV", "Use demo dataset"], index=1)
@@ -529,7 +527,7 @@ with st.sidebar:
         all_cols = ["(none)"] + list(df_train.columns)
         target_col = st.selectbox("Target column", all_cols)
         target_col = None if target_col == "(none)" else target_col
-        run_btn = st.button("▶ Run AI Audit", type="primary", use_container_width=True)
+        run_btn = st.button("Run AI Audit", type="primary", use_container_width=True)
     else:
         target_col = None
         run_btn = False
@@ -579,7 +577,7 @@ if "audit_results" not in st.session_state:
         "Upload your dataset and let **Claude** walk you through every step: "
         "profile → mechanisms → structural patterns → imputation plan."
     )
-    st.info("Select a dataset in the sidebar and click **▶ Run AI Audit** to begin.")
+    st.info("Select a dataset in the sidebar and click **Run AI Audit** to begin.")
     st.stop()
 
 # ──────────────────────────────────────────── retrieve state ─────────────────
@@ -703,15 +701,15 @@ _insight("overview", "Overall Assessment")
 
 # ─── Main tabs ────────────────────────────────────────────────────────────────
 tab_audit, tab_impute, tab_viz, tab_chat = st.tabs([
-    "📊 Audit",
-    "📋 Imputation",
-    "🖼 Visualizations",
-    "💬 Ask Claude",
+    "Audit",
+    "Imputation",
+    "Visualizations",
+    "Ask Claude",
 ])
 
 # ── Tab 1: Audit ──────────────────────────────────────────────────────────────
 with tab_audit:
-    st.subheader("📊 Missingness Profile")
+    st.subheader("Missingness Profile")
     st.dataframe(
         pd.DataFrame(
             [
@@ -720,7 +718,7 @@ with tab_audit:
                     "Missing Rate": f"{info['missing_rate']:.1%}",
                     "Severity": info["severity"],
                     "Dtype": info["dtype_category"],
-                    "Is Target": "✓" if info.get("is_target") else "",
+                    "Is Target": "Yes" if info.get("is_target") else "",
                 }
                 for col, info in profile["columns"].items()
             ]
@@ -745,7 +743,7 @@ with tab_audit:
 
     st.divider()
 
-    st.subheader("🧩 Missingness Mechanisms")
+    st.subheader("Missingness Mechanisms")
     st.caption(
         "MCAR-compatible: no detectable correlation. "
         "MAR-like: correlated with other observed features. "
@@ -786,14 +784,13 @@ with tab_audit:
     if llm_mech_cols:
         with st.expander("AI — per-column mechanism narratives", expanded=True):
             for col, info in llm_mech_cols:
-                icon = "⚠️ " if info.get("llm_anomaly") else ""
-                st.markdown(f"**{icon}`{col}`** — {info['llm_narrative']}")
+                st.markdown(f"**`{col}`** — {info['llm_narrative']}")
                 if info.get("llm_suggestion"):
                     st.caption(f"Suggestion: {info['llm_suggestion']}")
 
     if struct["n_structural_pairs"] > 0:
         st.divider()
-        st.subheader("🏗 Structural Absence")
+        st.subheader("Structural Absence")
         st.warning(f"{struct['n_structural_pairs']} structural pair(s) detected.")
         st.dataframe(
             pd.DataFrame(
@@ -843,13 +840,12 @@ with tab_impute:
         if entry["strategy"] != "no_imputation_needed"
     ]
     if _card_cols:
-        st.subheader("🗂 Decision Cards")
+        st.subheader("Decision Cards")
         st.caption(
             "One card per column with missing values — the recommended call, why it "
             "was made, and the alternatives. Statistics are fitted on training data "
             "only; the target column is never imputed."
         )
-        _sev_color = {"high": "🔴", "moderate": "🟠", "low": "🟡", "trace": "🔵"}
         for _i in range(0, len(_card_cols), 2):
             _row = _card_cols[_i:_i + 2]
             _cols = st.columns(len(_row))
@@ -861,7 +857,7 @@ with tab_impute:
                         _rate = _entry.get("missing_rate", _prof.get("missing_rate", 0))
                         st.markdown(f"#### `{_col}`")
                         st.markdown(
-                            f"{_sev_color.get(_sev, '⚪')} **{_rate:.1%} missing** "
+                            f"**{_rate:.1%} missing** "
                             f"· {_sev} severity · {_prof.get('dtype_category', '—')}"
                         )
                         st.markdown(f"**Mechanism clue:** {_entry.get('mechanism_label', '—')}")
@@ -872,7 +868,7 @@ with tab_impute:
                         if _entry.get("add_missing_indicator"):
                             _bits.append("+ missing indicator")
                         if _entry.get("mi_upgrade_recommended"):
-                            _bits.append("⚑ MI upgrade advised")
+                            _bits.append("MI upgrade advised")
                         if _bits:
                             st.caption(" · ".join(_bits))
                         _why = _entry.get("llm_readable_reason") or _entry.get("reason", "")
@@ -910,7 +906,7 @@ with tab_impute:
         )
 
     # ── Inference-grade analysis: multiple imputation + MNAR sensitivity ──────
-    with st.expander("🔬 Inference-grade analysis — multiple imputation & MNAR sensitivity"):
+    with st.expander("Inference-grade analysis — multiple imputation & MNAR sensitivity"):
         st.caption(
             "Single imputation understates variance; MAR cannot be verified from data. "
             "These two analyses quantify what the plan above cannot: the extra "
@@ -988,7 +984,7 @@ with tab_impute:
     st.divider()
 
     # Strategy override (replaces separate playground section)
-    st.subheader("🎮 Strategy Override")
+    st.subheader("Strategy Override")
     st.caption(
         "Leave dropdowns at **recommended** to use the plan above, or override per column. "
         "**Apply Recommended Plan** runs the full auditor pipeline; "
@@ -1056,9 +1052,9 @@ with tab_impute:
 
         _btn1, _btn2 = st.columns(2)
         with _btn1:
-            _apply_rec = st.button("⚡ Apply Recommended Plan", type="primary", use_container_width=True)
+            _apply_rec = st.button("Apply Recommended Plan", type="primary", use_container_width=True)
         with _btn2:
-            _apply_custom = st.button("🔬 Apply Custom Strategies", use_container_width=True)
+            _apply_custom = st.button("Apply Custom Strategies", use_container_width=True)
 
         if _apply_rec:
             with st.spinner("Applying imputation plan…"):
@@ -1159,7 +1155,7 @@ with tab_impute:
         _pg_df = st.session_state["playground_df"]
         _render_before_after_section(
             df_train, _pg_df, profile, target_col,
-            label="📊 Custom Strategies — Before vs After",
+            label="Custom Strategies — Before vs After",
         )
         _remain_pg = int(_pg_df.isna().sum().sum())
         if _remain_pg:
@@ -1183,7 +1179,7 @@ with tab_viz:
             chart_list.append("target_signal")
 
     if chart_rationale:
-        st.caption(f"🤖 _Claude selected these charts: {chart_rationale}_")
+        st.caption(f"_Claude selected these charts: {chart_rationale}_")
 
     _viz_client = anthropic.Anthropic(api_key=api_key_input) if api_key_input else None
     viz = MissingnessVisualizer(df_train, target_col=target_col, llm_client=_viz_client)
@@ -1222,7 +1218,6 @@ with tab_chat:
     if not api_key_input:
         st.info(
             "Add your Anthropic API key in the sidebar to ask follow-up questions about your data.",
-            icon="🔑",
         )
     else:
         if "chat_history" not in st.session_state:
@@ -1284,14 +1279,14 @@ report_md = rw.generate_report_md(profile, mech, struct, plan, leakage)
 d1, d2, d3, d4 = st.columns(4)
 with d1:
     st.download_button(
-        "📄 Markdown report",
+        "Markdown report",
         data=report_md.encode(),
         file_name="missing_data_report.md",
         mime="text/markdown",
     )
 with d2:
     st.download_button(
-        "🗂 imputation_plan.json",
+        "imputation_plan.json",
         data=json.dumps(plan, indent=2).encode(),
         file_name="imputation_plan.json",
         mime="application/json",
@@ -1299,24 +1294,24 @@ with d2:
 with d3:
     if "imputed_df" in st.session_state:
         st.download_button(
-            "📊 Imputed train CSV",
+            "Imputed train CSV",
             data=_df_to_csv(st.session_state["imputed_df"]),
             file_name="train_imputed.csv",
             mime="text/csv",
         )
     else:
-        st.button("📊 Imputed train CSV", disabled=True, help="Apply imputation first")
+        st.button("Imputed train CSV", disabled=True, help="Apply imputation first")
 with d4:
     if "imputed_df_predict" in st.session_state:
         st.download_button(
-            "📊 Imputed predict CSV",
+            "Imputed predict CSV",
             data=_df_to_csv(st.session_state["imputed_df_predict"]),
             file_name="predict_imputed.csv",
             mime="text/csv",
         )
     else:
         st.button(
-            "📊 Imputed predict CSV",
+            "Imputed predict CSV",
             disabled=True,
             help="Provide predict CSV and apply imputation",
         )
