@@ -96,15 +96,15 @@ The skill maps onto the standard agent-component model. The Streamlit app is one
 
 | Component | What it does |
 |---|---|
-| Brain / LLM | Claude runs the **Step 1.5 column semantic analysis** — the judgment a fixed rule table cannot do: it reads column names, dtypes, and sample values to infer each column's real-world meaning, assign a domain tag, identify grouping columns, and flag structural relationships. These outputs (`domain_tags`, `group_col`) are fed into the engine and **change which strategy it selects** — e.g. a temporal domain tag switches a column from median fill to forward/backward fill. The LLM also narrates mechanism clues, selects charts, and answers follow-up questions. The deterministic statistical core still runs fully without an LLM. |
-| Memory | The audit `results` dict carries state across steps (profile → mechanism → structural → plan → leakage check); `imputation_plan.json` persists the machine-readable plan so a downstream agent can apply it without re-running the audit. |
-| Planning | A two-part split: the **LLM supplies semantic judgment** (column meaning, grouping column, structural pairs) and `ImputationPlanner` makes the **deterministic decision** — walking a statistical→ML strategy ladder from mechanism clue, missing rate, cardinality, structural and domain-tag evidence, flagging `mi_upgrade_recommended` when single imputation is insufficient. |
+| Brain / LLM | Claude supplies the **semantic judgment** a rule table can't: Step 1.5 infers each column's real-world meaning, domain tag, grouping column, and structural pairs. These feed the engine and **change the chosen strategy** (e.g. a temporal tag → forward-fill instead of median). It also narrates findings and picks charts; the statistical core runs without it. |
+| Memory | The audit `results` dict carries state across steps (profile → mechanism → structural → plan → leakage check); `imputation_plan.json` persists the plan so a downstream agent can apply it without re-running the audit. |
+| Planning | LLM semantic judgment (meaning, grouping, structural pairs) **+** `ImputationPlanner`'s deterministic strategy ladder (mechanism clue, missing rate, cardinality, domain tag), flagging `mi_upgrade_recommended` when single imputation is insufficient. |
 | Action | Sub-auditors gather evidence: `MissingnessProfiler` (rates/severity), `MechanismAuditor` (Little's MCAR, logistic-LR, χ², point-biserial), `StructuralMissingnessDetector` (absence pairs), plus scikit-learn `IterativeImputer` for model-based and MICE imputation. |
 | Execution | `Imputer` applies the plan leakage-safe — every median/mode/group-median/model is fit on `df_train` only and transferred to predict data. Runs via Python API, CLI (`python -m missingness_auditor.cli`), or the Streamlit app. |
 | Observation | `LeakageSafeImputationChecker` verifies fit scope; five diagnostic figures, an MNAR delta-adjustment sensitivity analysis, and a standalone self-verifying reproduction script let humans and agents inspect the result. |
 | Response | Delivers a Markdown + PDF report, structured JSON logs (`imputation_plan.json`, mechanism/structural/leakage/MICE-pooling/MNAR), diagnostic figures, and optional imputed train/predict CSVs. |
 
-**Design principle:** the LLM owns *semantic judgment* (what a column means, how to group it, which gaps are structural); deterministic statistics own *every mechanism label, p-value, and strategy decision*. Keeping the two separate is what makes the results reproducible, auditable, and runnable offline — the LLM is never asked to invent a number.
+**Design principle:** the LLM judges *semantics*; deterministic statistics own *every label, p-value, and strategy* — reproducible, auditable, offline. The LLM never invents a number.
 
 ```mermaid
 flowchart LR
