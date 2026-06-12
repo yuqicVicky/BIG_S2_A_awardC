@@ -92,26 +92,30 @@ The plan is explicit enough for a downstream modeling agent to apply without rer
 
 ## Agent Design and Architecture
 
+The skill maps onto the standard agent-component model. The Streamlit app is one optional execution surface; the same components run headless through the Python API and CLI.
+
 | Component | What it does |
 |---|---|
-| Sidebar inputs | The Streamlit shell collects the Anthropic API key, data source, optional upload/demo dataset, target column, and the **Run AI Audit** trigger. |
-| Audit tab | Shows the report headline, dataset counts, rule-based overall assessment, missingness profile table, mechanism tests, and structural absence findings. |
-| Imputation tab | Presents AI recommendations, decision cards, leakage-safe strategy details, and the strategy override workflow with **Apply Recommended Plan** or **Apply Custom Strategies**. |
-| Visualizations tab | Displays Claude-selected diagnostic charts with captions, including missingness rates and target signal by missingness when a target is available. |
-| Ask Claude tab | Lets users ask follow-up questions grounded in the current audit, plan, and chart evidence. |
-| Reusable skill layer | The same profiler, mechanism audit, structural detector, planner, imputer, visualizer, and report writer remain available through the Python API and CLI. |
-| Outputs | The workflow produces a human-readable report plus machine-readable logs, `imputation_plan.json`, diagnostic figures, reproducibility artifacts, and optional imputed CSVs. |
+| Brain / LLM | Claude (`claude-sonnet-4-6`, optional) narrates mechanism clues, selects the most informative charts, explains each strategy, and answers follow-up questions. The core skill is deterministic and runs fully without an LLM. |
+| Memory | The audit `results` dict carries state across steps (profile → mechanism → structural → plan → leakage check); `imputation_plan.json` persists the machine-readable plan so a downstream agent can apply it without re-running the audit. |
+| Planning | `ImputationPlanner` decomposes the task per column and walks a statistical→ML strategy ladder, choosing from mechanism clue, missing rate, cardinality, and structural evidence, and flags `mi_upgrade_recommended` when single imputation is insufficient. |
+| Action | Sub-auditors gather evidence: `MissingnessProfiler` (rates/severity), `MechanismAuditor` (Little's MCAR, logistic-LR, χ², point-biserial), `StructuralMissingnessDetector` (absence pairs), plus scikit-learn `IterativeImputer` for model-based and MICE imputation. |
+| Execution | `Imputer` applies the plan leakage-safe — every median/mode/group-median/model is fit on `df_train` only and transferred to predict data. Runs via Python API, CLI (`python -m missingness_auditor.cli`), or the Streamlit app. |
+| Observation | `LeakageSafeImputationChecker` verifies fit scope; five diagnostic figures, an MNAR delta-adjustment sensitivity analysis, and a standalone self-verifying reproduction script let humans and agents inspect the result. |
+| Response | Delivers a Markdown + PDF report, structured JSON logs (`imputation_plan.json`, mechanism/structural/leakage/MICE-pooling/MNAR), diagnostic figures, and optional imputed train/predict CSVs. |
 
 ```mermaid
 flowchart LR
-    A["Sidebar: API key, data source, target column"] --> B["Run AI Audit"]
-    B --> C["Audit tab: report overview, profile, mechanism evidence"]
-    C --> D["Imputation tab: AI recommendation and strategy override"]
-    C --> E["Visualizations tab: Claude-selected diagnostic charts"]
-    D --> F["Apply recommended or custom strategies"]
-    E --> G["Ask Claude: follow-up interpretation"]
-    F --> H["Reports, logs, figures, and optional imputed CSVs"]
-    G --> H
+    A["Input: CSV / DataFrame (+ optional target, predict set)"] --> B["Action: profiler · mechanism · structural sub-auditors"]
+    B --> C["Planning: ImputationPlanner builds per-column plan"]
+    C --> D["Observation: leakage check + diagnostic figures + MNAR sensitivity"]
+    D --> E["Execution: leakage-safe Imputer (fit on train only)"]
+    E --> F["Response: report.md/.pdf · JSON logs · imputed CSVs · reproduce script"]
+    G["Brain/LLM: Claude narration & chart selection (optional)"] -.-> B
+    G -.-> C
+    G -.-> D
+    H["Memory: results dict + imputation_plan.json"] -.-> C
+    H -.-> E
 ```
 
 ## Use It
