@@ -30,13 +30,13 @@ Kaggle discussion index: https://www.kaggle.com/competitions/stai-x-challenge-20
 
 | Component | What it does |
 |---|---|
-| Brain / LLM | Claude is used in the Streamlit demo to narrate findings, recommend useful charts, explain mechanisms, and suggest alternatives. The core audit can run without an LLM. |
-| Memory | JSON logs and Markdown reports store the profile, mechanism audit, structural findings, leakage check, and imputation plan. |
-| Planning | Combines missing rates, dtype/cardinality, mechanism clues, structural evidence, and leakage rules into a per-column imputation plan. |
-| Action | Runs profilers, mechanism auditors, structural detectors, imputation planners, leakage checks, visualizers, and report writers through Python, CLI, or Streamlit. |
-| Execution | Python package plus Streamlit Cloud demo; the bundled demo dataset requires no external data. |
-| Observation | Tables, diagnostic charts, JSON evidence, report text, and before/after imputation summaries are inspected before final recommendations. |
-| Response | Delivers `imputation_plan.json`, `missing_data_report.md`, diagnostic figures, and optional imputed CSVs. |
+| Reusable statistical skill | The Python package performs the core audit: profiling missingness, testing mechanism clues, detecting structural absence, planning leakage-safe imputation, and writing reproducible artifacts. |
+| Streamlit control layer | The sidebar collects the API key, data source, target column, and **Run AI Audit** action so the same skill can be used with the demo data or an uploaded CSV. |
+| Audit tab | Presents the AI Missingness Audit Report, rule-based assessment, missingness profile, mechanism evidence, and structural findings in one review surface. |
+| Imputation tab | Shows AI recommendations and lets users either apply the recommended plan or override strategies column by column. |
+| Visualizations tab | Uses Claude-assisted chart selection to show the most relevant diagnostic figures and captions for the current dataset. |
+| Ask Claude tab | Provides a follow-up explanation interface grounded in the audit, imputation plan, and chart evidence. |
+| Outputs | Delivers `imputation_plan.json`, `missing_data_report.md`, diagnostic figures, reproducibility artifacts, and optional imputed CSVs for downstream agents. |
 
 ## Why participants can adopt it
 

@@ -94,26 +94,24 @@ The plan is explicit enough for a downstream modeling agent to apply without rer
 
 | Component | What it does |
 |---|---|
-| Brain / LLM | Claude is optional in the Streamlit demo; it narrates findings, chooses useful charts, explains mechanisms, and suggests alternatives. The core statistical audit also runs without an LLM. |
-| Memory | JSON logs and Markdown reports preserve profile, mechanism, structural, leakage, and plan outputs across calls. |
-| Planning | The planner combines missingness rates, dtype/cardinality, mechanism clues, structural evidence, and leakage rules into column-level imputation decisions. |
-| Action | Python package, CLI, and Streamlit UI invoke profilers, auditors, detector, planner, imputer, visualizer, and report writer. |
-| Execution | Local Python runtime or Streamlit Cloud; no external dataset is required for the bundled demo. |
-| Observation | The agent inspects tables, JSON evidence, diagnostic figures, before/after imputation summaries, and downloadable artifacts. |
-| Response | Final output is a human-readable report plus machine-readable `imputation_plan.json` and optional imputed CSVs. |
+| Sidebar inputs | The Streamlit shell collects the Anthropic API key, data source, optional upload/demo dataset, target column, and the **Run AI Audit** trigger. |
+| Audit tab | Shows the report headline, dataset counts, rule-based overall assessment, missingness profile table, mechanism tests, and structural absence findings. |
+| Imputation tab | Presents AI recommendations, decision cards, leakage-safe strategy details, and the strategy override workflow with **Apply Recommended Plan** or **Apply Custom Strategies**. |
+| Visualizations tab | Displays Claude-selected diagnostic charts with captions, including missingness rates and target signal by missingness when a target is available. |
+| Ask Claude tab | Lets users ask follow-up questions grounded in the current audit, plan, and chart evidence. |
+| Reusable skill layer | The same profiler, mechanism audit, structural detector, planner, imputer, visualizer, and report writer remain available through the Python API and CLI. |
+| Outputs | The workflow produces a human-readable report plus machine-readable logs, `imputation_plan.json`, diagnostic figures, reproducibility artifacts, and optional imputed CSVs. |
 
 ```mermaid
 flowchart LR
-    A["CSV or pandas DataFrame"] --> B["Missingness profile"]
-    B --> C["Mechanism audit"]
-    B --> D["Structural detector"]
-    C --> E["Imputation planner"]
-    D --> E
-    E --> F["Leakage-safe check"]
-    F --> G["imputation_plan.json"]
-    F --> H["missing_data_report.md"]
-    F --> I["Diagnostic figures"]
-    E --> J["Optional imputed data"]
+    A["Sidebar: API key, data source, target column"] --> B["Run AI Audit"]
+    B --> C["Audit tab: report overview, profile, mechanism evidence"]
+    C --> D["Imputation tab: AI recommendation and strategy override"]
+    C --> E["Visualizations tab: Claude-selected diagnostic charts"]
+    D --> F["Apply recommended or custom strategies"]
+    E --> G["Ask Claude: follow-up interpretation"]
+    F --> H["Reports, logs, figures, and optional imputed CSVs"]
+    G --> H
 ```
 
 ## Use It
