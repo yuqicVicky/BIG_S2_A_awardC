@@ -69,8 +69,10 @@ Saved audits should produce:
 - `logs/structural_missingness_audit.json`
 - `logs/imputation_plan.json`
 - `logs/leakage_safe_imputation_check.json`
-- `reports/missing_data_report.md`
-- diagnostic figures such as `missingness_bar.png`, `missingness_matrix.png`, and `missingness_target_signal.png`
+- `reports/missing_data_report.md` and `reports/missing_data_report.pdf`
+- `logs/mice_pooling.json` and `logs/mnar_sensitivity.json` (inference-grade analysis)
+- diagnostic figures: `missingness_bar.png`, `pattern_matrix.png`, `target_signal.png`, `missing_correlation.png`, `decision_flow.png`, and `mnar_tipping_point.png`
+- `reproduce_imputation.py` (standalone, self-verifying reproduction script)
 
 ## Review checklist
 

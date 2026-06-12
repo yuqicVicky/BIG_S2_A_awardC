@@ -30,13 +30,13 @@ Kaggle discussion index: https://www.kaggle.com/competitions/stai-x-challenge-20
 
 | Component | What it does |
 |---|---|
-| Reusable statistical skill | The Python package performs the core audit: profiling missingness, testing mechanism clues, detecting structural absence, planning leakage-safe imputation, and writing reproducible artifacts. |
-| Streamlit control layer | The sidebar collects the API key, data source, target column, and **Run AI Audit** action so the same skill can be used with the demo data or an uploaded CSV. |
-| Audit tab | Presents the AI Missingness Audit Report, rule-based assessment, missingness profile, mechanism evidence, and structural findings in one review surface. |
-| Imputation tab | Shows AI recommendations and lets users either apply the recommended plan or override strategies column by column. |
-| Visualizations tab | Uses Claude-assisted chart selection to show the most relevant diagnostic figures and captions for the current dataset. |
-| Ask Claude tab | Provides a follow-up explanation interface grounded in the audit, imputation plan, and chart evidence. |
-| Outputs | Delivers `imputation_plan.json`, `missing_data_report.md`, diagnostic figures, reproducibility artifacts, and optional imputed CSVs for downstream agents. |
+| Brain / LLM | Claude (`claude-sonnet-4-6`, optional) narrates mechanism clues, selects the most informative charts, explains each strategy choice, and answers follow-up questions in the demo. The core skill runs fully without an LLM — statistics and decisions are deterministic. |
+| Memory | The audit `results` dict carries state across steps (profile → mechanism → structural → plan → leakage check); `imputation_plan.json` persists the machine-readable plan so a downstream agent can apply it without re-running the audit. |
+| Planning | `ImputationPlanner` decomposes the problem per column and walks a statistical→ML strategy ladder, choosing a strategy from the mechanism clue, missing rate, cardinality, and structural evidence, and flags `mi_upgrade_recommended` when single imputation is insufficient. |
+| Action | Sub-auditors gather evidence: `MissingnessProfiler` (rates/severity), `MechanismAuditor` (Little's MCAR, logistic-LR, χ², point-biserial tests), `StructuralMissingnessDetector` (absence pairs), plus scikit-learn `IterativeImputer` for model-based and MICE imputation. |
+| Execution | `Imputer` applies the plan leakage-safe — every median/mode/group-median/model is fit on `df_train` only and transferred to predict data. Runs via Python API, CLI (`python -m missingness_auditor.cli`), or the Streamlit app. |
+| Observation | `LeakageSafeImputationChecker` verifies fit scope; five diagnostic figures, an MNAR delta-adjustment sensitivity analysis, and a standalone self-verifying reproduction script let humans and agents inspect the result. |
+| Response | Delivers a Markdown + PDF report, structured JSON logs (`imputation_plan.json`, mechanism/structural/leakage/MICE-pooling/MNAR), diagnostic figures, and optional imputed train/predict CSVs. |
 
 ## Why participants can adopt it
 
@@ -61,9 +61,34 @@ The bundled demo has 1,000 rows, 7 columns, 4 columns with missing values, and a
 ## Outputs
 
 - `imputation_plan.json`: machine-readable plan for downstream agents.
-- `missing_data_report.md`: human-readable audit report with evidence and limitations.
-- Diagnostic figures: missingness bar chart, pattern matrix, and target-signal chart.
+- `missing_data_report.md` + `missing_data_report.pdf`: human-readable audit report with evidence and limitations.
+- JSON logs: mechanism audit, structural audit, leakage check, MICE + Rubin's-rules pooling (`mice_pooling.json`), and MNAR sensitivity (`mnar_sensitivity.json`).
+- Five diagnostic figures: missingness bar chart, pattern matrix, target-signal chart, missingness-correlation heatmap, decision-flow diagram, and an MNAR tipping-point plot.
+- `reproduce_imputation.py`: standalone, self-verifying reproduction script.
 - Imputed CSV outputs: optional train/predict data after applying the selected plan.
+
+## Reproducibility
+
+The full skill, demo, and bundled demo data are in the GitHub repository, with a standalone reproduction path:
+
+```bash
+git clone https://github.com/yuqicVicky/BIG_S2_A_awardC
+cd BIG_S2_A_awardC
+pip install -r requirements.txt
+pip install -e .
+
+# Reproduce the bundled demo audit (writes logs, figures, report, reproduction script)
+PYTHONPATH=src python -m missingness_auditor.cli \
+  --data examples/demo_missingness.csv \
+  --target target \
+  --out outputs/demo_missingness/ \
+  --json-summary
+
+# Or launch the interactive Streamlit demo
+streamlit run app.py
+```
+
+Every saved audit also emits `outputs/reproduce_imputation.py` — a self-contained script (no dependency on this package) that re-applies the exact plan and verifies its own work (no residual nulls, target untouched, indicators binary). See `EVALUATION.md` for the full review checklist.
 
 ## Reuse in another agent
 
