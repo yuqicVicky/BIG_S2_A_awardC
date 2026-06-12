@@ -25,7 +25,7 @@
 | **Missingness profile** | Per-column missing rates, severity labels (trace/low/moderate/high), dtype category |
 | **Mechanism clues** | MCAR-compatible / MAR-like / MNAR/structural concern — statistical clues, not causal claims |
 | **Structural missingness** | Detects `(categorical NA → numeric companion is 0)` patterns — absence of a thing, not data error |
-| **Imputation plan** | Column-specific strategy (full ladder in `references/strategies.md`), with a leakage-safe fit scope |
+| **Imputation plan** | Column-specific strategy (decision ladder in `references/missingness_decision_rules.md`), with a leakage-safe fit scope |
 | **Leakage-safe protocol** | Confirms all statistics are fit on train only, never on predict |
 | **Mechanism tests** | Little's MCAR test (global) + per-column logistic-LR / χ² / point-biserial significance |
 | **Diagnostic figures** | Missingness bar chart, pattern matrix, target signal, decision flow, MNAR tipping point |
@@ -172,7 +172,6 @@ imputed_df = auditor.apply_imputation(df, results["imputation_plan"])
   app.py                         Streamlit demo
   src/missingness_auditor/       Reusable Python skill
   examples/                      Demo data builders and runnable examples
-  tests/                         Guardrail and strategy tests
   references/                    Missing-data references and decision rules
   figures/                       README and Kaggle submission screenshots
   AWARD_C_POST.md                Kaggle Discussion draft
@@ -182,7 +181,6 @@ imputed_df = auditor.apply_imputation(df, results["imputation_plan"])
 ## Quality Checks
 
 ```bash
-PYTHONPATH=src pytest tests -q
 PYTHONPATH=src python -m missingness_auditor.cli \
   --data examples/demo_missingness.csv \
   --target target \
@@ -204,8 +202,8 @@ outputs/
     leakage_safe_imputation_check.json
   figures/
     missingness_bar.png
-    pattern_matrix.png
-    target_signal.png
+    missingness_matrix.png
+    missingness_target_signal.png
     missing_correlation.png
   reports/
     missing_data_report.md
@@ -264,10 +262,12 @@ Compact `imputation_plan.json` example:
 > **Team info**
 > | Legal name | Affiliation | Institutional email | Kaggle username |
 > |---|---|---|---|
-> | [Name 1] | [University / Company / Independent] | [email] | [kaggle_user] |
-> | [Name 2] | [University / Company / Independent] | [email] | [kaggle_user] |
+> | Yuqi Cheng | University of North Carolina at Chapel Hill | yuqi16614994@gmail.com | yuqic1661 |
+> | Shucheng Liu | University of North Carolina at Chapel Hill | lsc210204@gmail.com | shuchengliu |
+> | Akemi Hara | University of North Carolina at Chapel Hill | akehara1001@gmail.com | akehara |
+> | Shan Gao | University of North Carolina at Chapel Hill | ssssgao777@gmail.com | GaoSShan |
 >
-> **Registered team name:** [TeamName]
+> **Registered team name:** BIG-S2_A
 
 **GitHub repository:** [https://github.com/yuqicVicky/BIG_S2_A_awardC](https://github.com/yuqicVicky/BIG_S2_A_awardC)  
 **Demo link:** [https://aimissingnessauditor.streamlit.app/](https://aimissingnessauditor.streamlit.app/)  

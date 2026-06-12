@@ -3,10 +3,12 @@
 > **Team info**
 > | Legal name | Affiliation | Institutional email | Kaggle username |
 > |---|---|---|---|
-> | [Name 1] | [University / Company / Independent] | [email] | [kaggle_user] |
-> | [Name 2] | [University / Company / Independent] | [email] | [kaggle_user] |
+> | Yuqi Cheng | University of North Carolina at Chapel Hill | yuqi16614994@gmail.com | yuqic1661 |
+> | Shucheng Liu | University of North Carolina at Chapel Hill | lsc210204@gmail.com | shuchengliu |
+> | Akemi Hara | University of North Carolina at Chapel Hill | akehara1001@gmail.com | akehara |
+> | Shan Gao | University of North Carolina at Chapel Hill | ssssgao777@gmail.com | GaoSShan |
 >
-> **Registered team name:** [TeamName]
+> **Registered team name:** BIG-S2_A
 
 **GitHub repository:** https://github.com/yuqicVicky/BIG_S2_A_awardC
 
