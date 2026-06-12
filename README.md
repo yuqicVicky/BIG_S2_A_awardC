@@ -198,13 +198,22 @@ outputs/
     structural_missingness_audit.json
     imputation_plan.json
     leakage_safe_imputation_check.json
+    mice_pooling.json                 MICE + Rubin's-rules pooling (inference)
+    mnar_sensitivity.json             MNAR delta-adjustment tipping points
   figures/
     missingness_bar.png
-    missingness_matrix.png
-    missingness_target_signal.png
+    pattern_matrix.png
+    target_signal.png
     missing_correlation.png
+    decision_flow.png                 CONSORT-style imputation decision flow
+    mnar_tipping_point.png            Delta-adjustment sensitivity trajectories
   reports/
     missing_data_report.md
+    missing_data_report.pdf           Methods-appendix PDF
+  reproduce_imputation.py             Standalone, self-verifying reproduction script
+  source_data.csv                     Frozen copy of the input for the reproduction script
+  train_imputed.csv                   Imputed training data (after apply_imputation)
+  predict_imputed.csv                 Imputed predict data (if a predict set was provided)
 ```
 
 Compact `imputation_plan.json` example:

@@ -29,12 +29,15 @@ modeling step.
 | **MAR** (Missing At Random) | Missingness depends on *other observed* variables. Income data missing more often for low-education respondents. | Impute and **add a binary missing indicator** — the pattern carries information. |
 | **MNAR** (Missing Not At Random) | Missingness depends on the *unobserved* value itself or the target. A customer's credit score is missing because they defaulted. | The gap IS signal. Always add a missing indicator. Consider keeping NaN as a category. |
 
-This tool uses cautious language:
-- **"MCAR-compatible"** — no significant observed correlations; consistent with MCAR.
-- **"MAR-like evidence"** — missingness statistically correlated with an observed feature.
-- **"MNAR/structural concern"** — missingness correlated with the target variable.
+This tool uses cautious, significance-test-driven labels (not bare correlation thresholds):
+- **"MCAR-compatible"** — no significant association with observed features or target.
+- **"MAR-like evidence"** — missingness significantly predicted by observed covariates (logistic-LR test).
+- **"group-dependent missingness"** — missingness significantly associated with a categorical group (χ² test).
+- **"target-associated missingness"** — missingness significantly associated with the target (point-biserial / χ²).
 
-These are observational clues, not causal mechanism assignments.
+A global **Little's MCAR test** is also reported. Structural absence is detected separately by
+`StructuralMissingnessDetector`, not by the mechanism auditor. These are observational clues, not
+causal mechanism assignments.
 
 ---
 
@@ -46,7 +49,8 @@ import pandas as pd
 
 df = pd.read_csv("my_data.csv")
 auditor = MissingnessAuditor(df, target_col="outcome")
-results = auditor.run(output_dir="outputs/")
+results = auditor.run()                      # pure computation, no disk writes
+auditor.save_outputs(results, "outputs/")    # writes logs, figures, reports + reproduction artifacts
 
 # Machine-readable plan for downstream agents
 plan = results["imputation_plan"]["columns"]
@@ -70,14 +74,21 @@ python -m missingness_auditor.cli \
 | File | Contents |
 |------|----------|
 | `outputs/logs/missingness_profile.json` | Per-column missing counts, rates, severity |
-| `outputs/logs/missingness_mechanism_audit.json` | MCAR / MAR-like / MNAR clue per column |
+| `outputs/logs/missingness_mechanism_audit.json` | MCAR / MAR-like / group-dependent / target-associated clue per column + Little's MCAR test |
 | `outputs/logs/structural_missingness_audit.json` | Structural absence pairs |
 | `outputs/logs/imputation_plan.json` | Per-column strategy, indicator flag, fit scope |
 | `outputs/logs/leakage_safe_imputation_check.json` | Leakage risk per column + global protocol |
+| `outputs/logs/mice_pooling.json` | MICE + Rubin's-rules pooling: pooled mean, MI vs naive SE, FMI (inference) |
+| `outputs/logs/mnar_sensitivity.json` | MNAR delta-adjustment tipping points + fragile-column list |
 | `outputs/reports/missing_data_report.md` | Human-readable narrative |
+| `outputs/reports/missing_data_report.pdf` | Methods-appendix PDF |
 | `outputs/figures/missingness_bar.png` | Bar chart of missing rates |
-| `outputs/figures/missingness_matrix.png` | Row × column missingness matrix |
-| `outputs/figures/missingness_target_signal.png` | Target signal by missingness |
+| `outputs/figures/pattern_matrix.png` | Row × column missingness pattern matrix |
+| `outputs/figures/target_signal.png` | Target signal by missingness |
+| `outputs/figures/missing_correlation.png` | Missingness-indicator correlation heatmap |
+| `outputs/figures/decision_flow.png` | CONSORT-style imputation decision flow |
+| `outputs/figures/mnar_tipping_point.png` | Delta-adjustment sensitivity trajectories |
+| `outputs/reproduce_imputation.py` | Standalone, self-verifying reproduction script |
 
 ---
 
@@ -102,7 +113,7 @@ From the four toy demo cases:
 
 **Case 4 — Structural (facility_type=NaN when no facility)**
 ```json
-{ "facility_type": { "strategy": "structural_none_or_zero", "add_missing_indicator": true } }
+{ "facility_type": { "strategy": "structural_none_token_plus_indicator", "add_missing_indicator": true } }
 ```
 
 ---
@@ -131,14 +142,22 @@ for col, entry in plan["columns"].items():
         X_test[f"{col}_was_missing"]  = X_test[col].isna().astype(int)
         X_train[col] = X_train[col].fillna(median)
         X_test[col]  = X_test[col].fillna(median)
-    elif strategy == "categorical_missing_token":
+    elif strategy in ("categorical_missing_token", "categorical_missing_token_plus_indicator"):
+        if entry["add_missing_indicator"]:
+            X_train[f"{col}_was_missing"] = X_train[col].isna().astype(int)
+            X_test[f"{col}_was_missing"]  = X_test[col].isna().astype(int)
         X_train[col] = X_train[col].fillna("MISSING")
         X_test[col]  = X_test[col].fillna("MISSING")
-    elif strategy == "structural_none_or_zero":
+    elif strategy == "structural_none_token_plus_indicator":
         X_train[f"{col}_was_missing"] = X_train[col].isna().astype(int)
         X_test[f"{col}_was_missing"]  = X_test[col].isna().astype(int)
         X_train[col] = X_train[col].fillna("NONE")
         X_test[col]  = X_test[col].fillna("NONE")
+    elif strategy == "structural_zero_plus_indicator":
+        X_train[f"{col}_was_missing"] = X_train[col].isna().astype(int)
+        X_test[f"{col}_was_missing"]  = X_test[col].isna().astype(int)
+        X_train[col] = X_train[col].fillna(0)
+        X_test[col]  = X_test[col].fillna(0)
     elif strategy == "drop_column":
         X_train = X_train.drop(columns=[col])
         X_test  = X_test.drop(columns=[col])
@@ -150,14 +169,16 @@ for col, entry in plan["columns"].items():
 
 | Strategy | When applied |
 |----------|-------------|
-| `no_imputation_needed` | Column is fully observed |
-| `numeric_median` | MCAR-compatible + <10% missing |
-| `numeric_median_plus_indicator` | MAR-like, MNAR concern, or ≥10% missing |
+| `no_imputation_needed` | Column is fully observed or is the target column |
+| `numeric_median` | Numeric, MCAR-compatible + <10% missing |
+| `numeric_median_plus_indicator` | Numeric, MAR-like / target-associated, or ≥10% missing |
+| `groupwise_numeric_median_plus_indicator` | Numeric, group-dependent missingness (per-group median + global fallback) |
+| `time_series_ffill_bfill_plus_indicator` | Numeric column with a temporal domain tag (ffill→bfill instead of median) |
 | `categorical_missing_token` | Categorical + <10% missing |
-| `categorical_mode_plus_indicator` | Categorical + ≥10% missing |
-| `structural_none_or_zero` | Structural absence pattern detected |
+| `categorical_missing_token_plus_indicator` | Categorical + ≥10% missing, group-dependent, or high-cardinality text |
+| `structural_none_token_plus_indicator` | Categorical structural absence (NaN encodes "none") |
+| `structural_zero_plus_indicator` | Numeric structural absence (companion-column zero evidence) |
 | `drop_column` | >80% missing |
-| `model_based_imputation_optional` | Complex MAR, moderate missingness |
 
 ---
 
@@ -179,6 +200,9 @@ structural = StructuralMissingnessDetector(df).detect()
 
 ## Scope
 
-**In scope:** missingness profile, mechanism clues, structural detection, imputation planning, leakage-safe protocol, 3 diagnostic figures.
+**In scope:** missingness profile; significance-test-driven mechanism clues (Little's MCAR, logistic-LR,
+χ², point-biserial); structural detection; column-specific imputation planning; leakage-safe execution;
+inference-grade analysis (MICE + Rubin's-rules pooling, MNAR delta-adjustment sensitivity); 5 diagnostic
+figures; Markdown + PDF reports; and a standalone self-verifying reproduction script.
 
-**Out of scope:** MICE / iterative imputation implementation, AutoML, model search, EDA, PDF reports.
+**Out of scope:** AutoML, model/hyperparameter search, and general EDA beyond missingness.
