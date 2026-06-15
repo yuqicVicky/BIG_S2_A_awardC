@@ -1,5 +1,5 @@
 <h1>
-  <img src="figures/staix.png" height="46" align="middle" alt="STAI-X Challenge icon">
+  <sub><sub><img src="figures/staix.png" height="42" alt="STAI-X Challenge icon"></sub></sub>
   AI Missingness Auditor
 </h1>
 
